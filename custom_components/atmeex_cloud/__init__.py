@@ -56,15 +56,36 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
             has_condition = device.model.condition is not None
             
             if has_condition:
+                # Получаем все доступные атрибуты condition
+                condition_attrs = {}
+                if hasattr(device.model.condition, '__dict__'):
+                    condition_attrs = device.model.condition.__dict__
+                elif hasattr(device.model.condition, '__annotations__'):
+                    # Если это dataclass, пробуем получить все поля
+                    for attr_name in device.model.condition.__annotations__:
+                        condition_attrs[attr_name] = getattr(device.model.condition, attr_name, 'N/A')
+                else:
+                    # Пробуем получить атрибуты через dir
+                    for attr_name in dir(device.model.condition):
+                        if not attr_name.startswith('_'):
+                            try:
+                                condition_attrs[attr_name] = getattr(device.model.condition, attr_name, 'N/A')
+                            except:
+                                pass
+                
+                # Логируем все поля condition
+                _LOGGER.info(f"Device {device_name} (ID: {device_id}) condition FULL DATA: {condition_attrs}")
+                
+                # Также логируем специфические поля
                 condition_info = {
                     'co2_ppm': getattr(device.model.condition, 'co2_ppm', None),
                     'temp_room': getattr(device.model.condition, 'temp_room', None),
                     'temp_in': getattr(device.model.condition, 'temp_in', None),
                     'hum_room': getattr(device.model.condition, 'hum_room', None),
                 }
-                _LOGGER.debug(f"Device {device_name} (ID: {device_id}) condition data: {condition_info}")
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}) condition specific fields: {condition_info}")
             else:
-                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None")
+                _LOGGER.warning(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'")
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
             self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:

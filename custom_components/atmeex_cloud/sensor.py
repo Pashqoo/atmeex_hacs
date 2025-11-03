@@ -21,6 +21,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for device in coordinator.devices:
         device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Atmeex {device.model.id}"
         
+        # Логируем состояние устройства при создании sensors
+        has_condition = device.model.condition is not None
+        _LOGGER.info(f"Setting up sensors for device {device_name} (ID: {device.model.id}), condition present: {has_condition}")
+        
         # Создаем sensors для всех устройств (condition может появиться позже)
         entities.append(AtmeexCO2Sensor(device, coordinator, device_name))
         entities.append(AtmeexTemperatureSensor(device, coordinator, device_name))
@@ -31,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
         entities.append(AtmeexDamperPositionSensor(device, coordinator, device_name))
         entities.append(AtmeexFirmwareVersionSensor(device, coordinator, device_name))
     
-    _LOGGER.debug(f"Creating {len(entities)} sensor entities for {len(coordinator.devices)} devices")
+    _LOGGER.info(f"Creating {len(entities)} sensor entities for {len(coordinator.devices)} devices")
     async_add_entities(entities)
 
 class AtmeexCO2Sensor(CoordinatorEntity, SensorEntity):
@@ -78,12 +82,13 @@ class AtmeexCO2Sensor(CoordinatorEntity, SensorEntity):
             if co2_value is not None:
                 self._attr_native_value = co2_value
                 self._attr_available = True
+                _LOGGER.debug(f"CO2 sensor {self.name}: value updated to {co2_value} ppm")
             else:
-                _LOGGER.debug(f"CO2 sensor {self.name}: condition.co2_ppm is None or missing")
+                _LOGGER.warning(f"CO2 sensor {self.name}: condition.co2_ppm is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
         else:
-            _LOGGER.debug(f"CO2 sensor {self.name}: device.model.condition is None")
+            _LOGGER.warning(f"CO2 sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -132,12 +137,13 @@ class AtmeexTemperatureSensor(CoordinatorEntity, SensorEntity):
                 # temp_room в API - это температура * 10
                 self._attr_native_value = temp_value / 10.0
                 self._attr_available = True
+                _LOGGER.debug(f"Temperature sensor {self.name}: value updated to {self._attr_native_value}°C (raw: {temp_value})")
             else:
-                _LOGGER.debug(f"Temperature sensor {self.name}: condition.temp_room is None or missing")
+                _LOGGER.warning(f"Temperature sensor {self.name}: condition.temp_room is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
         else:
-            _LOGGER.debug(f"Temperature sensor {self.name}: device.model.condition is None")
+            _LOGGER.warning(f"Temperature sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -239,12 +245,13 @@ class AtmeexHumiditySensor(CoordinatorEntity, SensorEntity):
             if hum_value is not None:
                 self._attr_native_value = hum_value
                 self._attr_available = True
+                _LOGGER.debug(f"Humidity sensor {self.name}: value updated to {hum_value}%")
             else:
-                _LOGGER.debug(f"Humidity sensor {self.name}: condition.hum_room is None or missing")
+                _LOGGER.warning(f"Humidity sensor {self.name}: condition.hum_room is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
         else:
-            _LOGGER.debug(f"Humidity sensor {self.name}: device.model.condition is None")
+            _LOGGER.warning(f"Humidity sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
