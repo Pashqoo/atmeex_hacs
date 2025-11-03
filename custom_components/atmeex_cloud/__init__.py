@@ -1,4 +1,5 @@
 from datetime import timedelta
+import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -19,7 +20,11 @@ async def async_setup(hass: HomeAssistant, config: dict):
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    api = AtmeexClient(entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
+    # Создаем AtmeexClient в отдельном потоке, чтобы избежать блокирующих вызовов в event loop
+    def _create_client():
+        return AtmeexClient(entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
+    
+    api = await hass.async_add_executor_job(_create_client)
     api.restore_tokens(entry.data[CONF_ACCESS_TOKEN], entry.data[CONF_REFRESH_TOKEN])
 
     coordinator = AtmeexDataCoordinator(hass, api, entry)
