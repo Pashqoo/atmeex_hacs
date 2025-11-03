@@ -9,5 +9,10 @@
   "codeowners": ["@Pashqoo"],
   "issue_tracker": "http://github.com/Pashqoo/atmeex_hacs/issues",
   "config_flow": true,
-  "version": "0.2.2"
+  "version": "0.2.2",
+  "brand": {
+    "name": "Atmeex",
+    "manufacturer": "Atmeex",
+    "model": "AirNanny Breezer"
+  }
 }

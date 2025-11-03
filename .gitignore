@@ -34,3 +34,4 @@ Thumbs.db
 # Home Assistant
 *.log
 
+# Note: brand.png должен быть в репозитории, поэтому не добавляем его в .gitignore
