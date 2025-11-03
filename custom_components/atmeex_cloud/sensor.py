@@ -27,6 +27,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
             entities.append(AtmeexTemperatureSensor(device, coordinator, device_name))
             entities.append(AtmeexHumiditySensor(device, coordinator, device_name))
             entities.append(AtmeexTemperatureInSensor(device, coordinator, device_name))
+            entities.append(AtmeexHumidityTargetSensor(device, coordinator, device_name))
+            entities.append(AtmeexFanSpeedSensor(device, coordinator, device_name))
+            entities.append(AtmeexDamperPositionSensor(device, coordinator, device_name))
+            entities.append(AtmeexFirmwareVersionSensor(device, coordinator, device_name))
     
     async_add_entities(entities)
 
@@ -215,4 +219,190 @@ class AtmeexHumiditySensor(CoordinatorEntity, SensorEntity):
         else:
             self._attr_native_value = None
             self._attr_available = False
+
+class AtmeexHumidityTargetSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for target humidity."""
+    
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = 'mdi:target'
+    
+    def __init__(self, device: Device, coordinator: AtmeexDataCoordinator, device_name: str):
+        CoordinatorEntity.__init__(self, coordinator=coordinator)
+        
+        self.coordinator = coordinator
+        self.device = device
+        
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_humidity_target_sensor"
+        self._attr_name = f"{device_name} Humidity Target"
+        
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+        )
+        
+        self._update_state()
+    
+    def _handle_coordinator_update(self) -> None:
+        device_id = self.device.model.id
+        same_devices = [d for d in self.coordinator.devices if d.model.id == device_id]
+        
+        if len(same_devices) == 0:
+            self._attr_available = False
+        else:
+            self.device = same_devices[0]
+            self._update_state()
+        
+        self.async_write_ha_state()
+    
+    def _update_state(self) -> None:
+        # Используем значение из settings (установка) или condition (текущая цель)
+        if self.device.model.condition:
+            self._attr_native_value = self.device.model.condition.hum_stg
+        else:
+            self._attr_native_value = self.device.model.settings.u_hum_stg
+        self._attr_available = True
+
+class AtmeexFanSpeedSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for current fan speed."""
+    
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = 'mdi:fan'
+    
+    def __init__(self, device: Device, coordinator: AtmeexDataCoordinator, device_name: str):
+        CoordinatorEntity.__init__(self, coordinator=coordinator)
+        
+        self.coordinator = coordinator
+        self.device = device
+        
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_fan_speed"
+        self._attr_name = f"{device_name} Fan Speed"
+        
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+        )
+        
+        self._update_state()
+    
+    def _handle_coordinator_update(self) -> None:
+        device_id = self.device.model.id
+        same_devices = [d for d in self.coordinator.devices if d.model.id == device_id]
+        
+        if len(same_devices) == 0:
+            self._attr_available = False
+        else:
+            self.device = same_devices[0]
+            self._update_state()
+        
+        self.async_write_ha_state()
+    
+    def _update_state(self) -> None:
+        if self.device.model.condition:
+            # Возвращаем скорость как 1-7 (для удобства)
+            self._attr_native_value = self.device.model.condition.fan_speed + 1
+            self._attr_available = True
+        else:
+            # Если нет condition, используем settings
+            self._attr_native_value = self.device.model.settings.u_fan_speed + 1
+            self._attr_available = True
+
+class AtmeexDamperPositionSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for damper position."""
+    
+    _attr_icon = 'mdi:air-filter'
+    
+    def __init__(self, device: Device, coordinator: AtmeexDataCoordinator, device_name: str):
+        CoordinatorEntity.__init__(self, coordinator=coordinator)
+        
+        self.coordinator = coordinator
+        self.device = device
+        
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_damper_position"
+        self._attr_name = f"{device_name} Damper Position"
+        
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+        )
+        
+        self._update_state()
+    
+    def _handle_coordinator_update(self) -> None:
+        device_id = self.device.model.id
+        same_devices = [d for d in self.coordinator.devices if d.model.id == device_id]
+        
+        if len(same_devices) == 0:
+            self._attr_available = False
+        else:
+            self.device = same_devices[0]
+            self._update_state()
+        
+        self.async_write_ha_state()
+    
+    def _update_state(self) -> None:
+        # Маппинг: 0 = "Open", 1 = "Mixed", 2 = "Closed"
+        position_map = {
+            0: "Open",
+            1: "Mixed",
+            2: "Closed"
+        }
+        
+        if self.device.model.condition:
+            damp_pos = self.device.model.condition.damp_pos
+        else:
+            damp_pos = self.device.model.settings.u_damp_pos
+        
+        self._attr_native_value = position_map.get(damp_pos, "Unknown")
+        self._attr_available = True
+
+class AtmeexFirmwareVersionSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for firmware version."""
+    
+    _attr_icon = 'mdi:chip'
+    
+    def __init__(self, device: Device, coordinator: AtmeexDataCoordinator, device_name: str):
+        CoordinatorEntity.__init__(self, coordinator=coordinator)
+        
+        self.coordinator = coordinator
+        self.device = device
+        
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_firmware_version"
+        self._attr_name = f"{device_name} Firmware Version"
+        
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+        )
+        
+        self._update_state()
+    
+    def _handle_coordinator_update(self) -> None:
+        device_id = self.device.model.id
+        same_devices = [d for d in self.coordinator.devices if d.model.id == device_id]
+        
+        if len(same_devices) == 0:
+            self._attr_available = False
+        else:
+            self.device = same_devices[0]
+            self._update_state()
+        
+        self.async_write_ha_state()
+    
+    def _update_state(self) -> None:
+        # Предпочитаем версию из condition, иначе из model
+        if self.device.model.condition:
+            self._attr_native_value = self.device.model.condition.firmware_version
+        else:
+            self._attr_native_value = self.device.model.fw_ver
+        self._attr_available = True
 

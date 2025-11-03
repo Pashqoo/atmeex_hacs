@@ -5,4 +5,8 @@ PLATFORMS = [
     "climate",
     "fan",
     "sensor",
+    "binary_sensor",
+    "select",
+    "number",
+    "switch",
 ]
