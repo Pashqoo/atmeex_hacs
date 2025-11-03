@@ -61,15 +61,32 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
             device_id = device.model.id
             device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {device_id}"
             
-            # Если condition отсутствует, пробуем обновить устройство
+            # Если condition отсутствует, пробуем получить его через отдельный запрос
             if device.model.condition is None:
-                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None, trying to refresh device data")
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None, trying to fetch condition data")
                 try:
-                    # Пробуем обновить данные устройства через API
-                    # Проверяем, есть ли метод для обновления устройства
-                    if hasattr(device, 'refresh') or hasattr(device, 'update') or hasattr(device, 'get_info'):
-                        _LOGGER.debug(f"Trying to refresh device {device_id} data")
-                        # Пробуем разные возможные методы
+                    # Пробуем получить condition через API напрямую
+                    # Возможно, нужно сделать отдельный запрос GET /devices/{id}/condition
+                    if hasattr(self.api, '_http_client'):
+                        _LOGGER.debug(f"Trying to fetch condition for device {device_id} via direct API call")
+                        try:
+                            # Пробуем получить данные устройства через GET /devices/{id}
+                            resp = await self.api._http_client.get(f"/devices/{device_id}")
+                            if resp.status_code == 200:
+                                device_data = resp.json()
+                                # Проверяем, есть ли condition в ответе
+                                if 'condition' in device_data and device_data['condition']:
+                                    from atmeexpy.device import DeviceConditionModel
+                                    device.model.condition = DeviceConditionModel.fromdict(device_data['condition'])
+                                    _LOGGER.info(f"Successfully fetched condition for device {device_name} (ID: {device_id})")
+                                else:
+                                    _LOGGER.debug(f"No condition in device data for {device_id}")
+                        except Exception as api_err:
+                            _LOGGER.debug(f"Could not fetch condition via API for device {device_id}: {api_err}")
+                    
+                    # Также пробуем методы объекта device
+                    if device.model.condition is None and (hasattr(device, 'refresh') or hasattr(device, 'update') or hasattr(device, 'get_info')):
+                        _LOGGER.debug(f"Trying to refresh device {device_id} data via device methods")
                         if hasattr(device, 'refresh'):
                             await device.refresh()
                         elif hasattr(device, 'update'):
