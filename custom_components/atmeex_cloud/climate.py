@@ -59,7 +59,9 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
             if self.hvac_mode == HVACMode.OFF:
                 await self.device.set_power(True)
 
-            await self.device.set_heat_temp(saved_target_temp)
+            # Конвертация: API использует температуру * 10 (100-300 вместо 10-30)
+            api_temp = int(saved_target_temp * 10)
+            await self.device.set_heat_temp(api_temp)
         elif hvac_mode == HVACMode.FAN_ONLY:
             if self.hvac_mode == HVACMode.OFF:
                 await self.device.set_power(True)
@@ -78,7 +80,9 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        await self.device.set_heat_temp(temperature)
+        # Конвертация: API использует температуру * 10 (100-300 вместо 10-30)
+        api_temp = int(temperature * 10)
+        await self.device.set_heat_temp(api_temp)
 
     async def async_turn_on(self):
         if self.hvac_mode != HVACMode.OFF:
@@ -107,7 +111,13 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
 
     def _update_state(self):
         self._attr_fan_mode = str(self.device.model.settings.u_fan_speed+1)
-        self._attr_target_temperature = self.device.model.settings.u_temp_room
+        # Конвертация: API возвращает температуру * 10, нужно разделить на 10
+        # Также проверяем на HEATER_DISABLE_TEMP (-1000) для режима FAN_ONLY
+        api_temp = self.device.model.settings.u_temp_room
+        if api_temp == -1000:  # HEATER_DISABLE_TEMP для режима вентиляции
+            self._attr_target_temperature = None
+        else:
+            self._attr_target_temperature = api_temp / 10.0
         self._attr_hvac_mode = HVACMode.OFF if not self.device.model.settings.u_pwr_on else \
-            HVACMode.HEAT if self.device.model.settings.u_temp_room > 0 else HVACMode.FAN_ONLY
+            HVACMode.HEAT if api_temp > 0 else HVACMode.FAN_ONLY
 

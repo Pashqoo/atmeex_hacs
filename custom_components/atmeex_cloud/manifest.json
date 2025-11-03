@@ -9,5 +9,5 @@
   "codeowners": ["@Pashqoo"],
   "issue_tracker": "http://github.com/Pashqoo/atmeex_hacs/issues",
   "config_flow": true,
-  "version": "0.2.0"
+  "version": "0.2.1"
 }
