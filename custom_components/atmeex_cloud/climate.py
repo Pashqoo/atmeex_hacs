@@ -8,6 +8,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 
 from atmeexpy.device import Device
+from atmeexpy.device import DeviceSettingsSetModel
 
 from . import AtmeexDataCoordinator
 
@@ -82,7 +83,19 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
             if self.hvac_mode == HVACMode.OFF:
                 await self.device.set_power(True)
 
-            await self.device.set_heat_temp(-1000)
+            # Для режима вентиляции используем специальное значение -1000 (HEATER_DISABLE_TEMP)
+            # Обрабатываем возможную ошибку валидации в библиотеке
+            try:
+                await self.device.set_heat_temp(-1000)
+            except ValueError as e:
+                # Если библиотека не принимает -1000, используем прямой доступ к API
+                if "not between 100 and 300" in str(e):
+                    _LOGGER.debug(f"Library validation failed for -1000, using direct API call: {e}")
+                    # Используем прямой доступ к API через _set_params (обход валидации)
+                    await self.device._set_params(DeviceSettingsSetModel(u_temp_room=-1000))
+                else:
+                    # Другая ошибка - пробрасываем дальше
+                    raise
         else:
             _LOGGER.error("Unrecognized hvac mode: %s", hvac_mode)
             return
