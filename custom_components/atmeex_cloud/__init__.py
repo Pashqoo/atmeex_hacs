@@ -62,11 +62,12 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
             device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {device_id}"
             
             # Если condition отсутствует, пробуем получить его через отдельный запрос
+            # Даже если устройство показывает online: False, condition может быть доступен
             if device.model.condition is None:
                 _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None, trying to fetch condition data")
                 try:
                     # Пробуем получить condition через API напрямую
-                    # Возможно, нужно сделать отдельный запрос GET /devices/{id}/condition
+                    # Возможно, нужно сделать отдельный запрос GET /devices/{id} или GET /devices/{id}/condition
                     if hasattr(self.api, '_http_client'):
                         _LOGGER.debug(f"Trying to fetch condition for device {device_id} via direct API call")
                         try:
@@ -74,25 +75,37 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                             resp = await self.api._http_client.get(f"/devices/{device_id}")
                             if resp.status_code == 200:
                                 device_data = resp.json()
+                                _LOGGER.debug(f"Device {device_id} API response: {device_data}")
+                                
                                 # Проверяем, есть ли condition в ответе
                                 if 'condition' in device_data and device_data['condition']:
                                     from atmeexpy.device import DeviceConditionModel
                                     device.model.condition = DeviceConditionModel.fromdict(device_data['condition'])
                                     _LOGGER.info(f"Successfully fetched condition for device {device_name} (ID: {device_id})")
+                                elif 'condition' in device_data and device_data['condition'] is None:
+                                    _LOGGER.debug(f"Device {device_id} has condition field but it's None in API response")
                                 else:
-                                    _LOGGER.debug(f"No condition in device data for {device_id}")
+                                    _LOGGER.debug(f"No condition field in device data for {device_id}")
+                                    
+                                # Также обновляем статус online если он изменился
+                                if 'online' in device_data:
+                                    device.model.online = device_data['online']
+                                    _LOGGER.debug(f"Updated online status for device {device_id}: {device_data['online']}")
                         except Exception as api_err:
-                            _LOGGER.debug(f"Could not fetch condition via API for device {device_id}: {api_err}")
+                            _LOGGER.warning(f"Could not fetch condition via API for device {device_id}: {api_err}")
                     
                     # Также пробуем методы объекта device
                     if device.model.condition is None and (hasattr(device, 'refresh') or hasattr(device, 'update') or hasattr(device, 'get_info')):
                         _LOGGER.debug(f"Trying to refresh device {device_id} data via device methods")
-                        if hasattr(device, 'refresh'):
-                            await device.refresh()
-                        elif hasattr(device, 'update'):
-                            await device.update()
-                        elif hasattr(device, 'get_info'):
-                            await device.get_info()
+                        try:
+                            if hasattr(device, 'refresh'):
+                                await device.refresh()
+                            elif hasattr(device, 'update'):
+                                await device.update()
+                            elif hasattr(device, 'get_info'):
+                                await device.get_info()
+                        except Exception as device_err:
+                            _LOGGER.debug(f"Device method refresh failed for {device_id}: {device_err}")
                 except Exception as e:
                     _LOGGER.debug(f"Could not refresh device {device_id} data: {e}")
             
