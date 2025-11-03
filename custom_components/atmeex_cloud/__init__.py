@@ -55,9 +55,30 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
         
         # Логируем информацию о полученных устройствах для отладки
         _LOGGER.debug(f"Received {len(self.devices)} devices from API")
+        
+        # Пробуем обновить данные каждого устройства отдельно, чтобы получить condition
         for device in self.devices:
             device_id = device.model.id
             device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {device_id}"
+            
+            # Если condition отсутствует, пробуем обновить устройство
+            if device.model.condition is None:
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None, trying to refresh device data")
+                try:
+                    # Пробуем обновить данные устройства через API
+                    # Проверяем, есть ли метод для обновления устройства
+                    if hasattr(device, 'refresh') or hasattr(device, 'update') or hasattr(device, 'get_info'):
+                        _LOGGER.debug(f"Trying to refresh device {device_id} data")
+                        # Пробуем разные возможные методы
+                        if hasattr(device, 'refresh'):
+                            await device.refresh()
+                        elif hasattr(device, 'update'):
+                            await device.update()
+                        elif hasattr(device, 'get_info'):
+                            await device.get_info()
+                except Exception as e:
+                    _LOGGER.debug(f"Could not refresh device {device_id} data: {e}")
+            
             has_condition = device.model.condition is not None
             
             if has_condition:
@@ -90,7 +111,12 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                 }
                 _LOGGER.debug(f"Device {device_name} (ID: {device_id}) condition specific fields: {condition_info}")
             else:
-                _LOGGER.warning(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'")
+                # Логируем полную структуру device.model для диагностики
+                device_model_attrs = {}
+                if hasattr(device.model, '__dict__'):
+                    device_model_attrs = {k: v for k, v in device.model.__dict__.items() if k != 'condition'}
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}) model structure (without condition): {device_model_attrs}")
+                _LOGGER.warning(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'. This might be normal if device is offline or data is not available yet.")
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
             self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:
