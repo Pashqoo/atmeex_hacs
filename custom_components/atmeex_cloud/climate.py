@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PRECISION_WHOLE, UnitOfTemperature, ATTR_TEMPERATURE
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity import DeviceInfo
 
 from atmeexpy.device import Device
 
@@ -38,6 +39,21 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
 
         self.coordinator = coordinator
         self.device = device
+        
+        # Уникальный ID для entity (позволяет настраивать через UI)
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_climate"
+        # Имя устройства из API или дефолтное
+        device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Atmeex {device.model.id}"
+        self._attr_name = device_name
+        
+        # Информация об устройстве для группировки entities
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+            via_device=(DOMAIN, coordinator.entry.entry_id),
+        )
 
         self._last_mode = None
         self._update_state()
