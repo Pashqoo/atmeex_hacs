@@ -21,17 +21,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for device in coordinator.devices:
         device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Atmeex {device.model.id}"
         
-        # Создаем sensors только если есть данные о состоянии
-        if device.model.condition:
-            entities.append(AtmeexCO2Sensor(device, coordinator, device_name))
-            entities.append(AtmeexTemperatureSensor(device, coordinator, device_name))
-            entities.append(AtmeexHumiditySensor(device, coordinator, device_name))
-            entities.append(AtmeexTemperatureInSensor(device, coordinator, device_name))
-            entities.append(AtmeexHumidityTargetSensor(device, coordinator, device_name))
-            entities.append(AtmeexFanSpeedSensor(device, coordinator, device_name))
-            entities.append(AtmeexDamperPositionSensor(device, coordinator, device_name))
-            entities.append(AtmeexFirmwareVersionSensor(device, coordinator, device_name))
+        # Создаем sensors для всех устройств (condition может появиться позже)
+        entities.append(AtmeexCO2Sensor(device, coordinator, device_name))
+        entities.append(AtmeexTemperatureSensor(device, coordinator, device_name))
+        entities.append(AtmeexHumiditySensor(device, coordinator, device_name))
+        entities.append(AtmeexTemperatureInSensor(device, coordinator, device_name))
+        entities.append(AtmeexHumidityTargetSensor(device, coordinator, device_name))
+        entities.append(AtmeexFanSpeedSensor(device, coordinator, device_name))
+        entities.append(AtmeexDamperPositionSensor(device, coordinator, device_name))
+        entities.append(AtmeexFirmwareVersionSensor(device, coordinator, device_name))
     
+    _LOGGER.debug(f"Creating {len(entities)} sensor entities for {len(coordinator.devices)} devices")
     async_add_entities(entities)
 
 class AtmeexCO2Sensor(CoordinatorEntity, SensorEntity):
