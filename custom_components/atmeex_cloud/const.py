@@ -4,4 +4,5 @@ CONF_REFRESH_TOKEN = "refresh_token"
 PLATFORMS = [
     "climate",
     "fan",
+    "sensor",
 ]
