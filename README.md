@@ -77,12 +77,13 @@
 
 ### Управление через автоматизации
 
+**Пример 1: Управление по CO2 из самого бризера:**
 ```yaml
 automation:
   - alias: "Включить бризер при высоком CO2"
     trigger:
       - platform: numeric_state
-        entity_id: sensor.air_monitor_pro_co2
+        entity_id: sensor.atmeex_brizer_1_co2
         above: 800
     action:
       - service: climate.set_hvac_mode
@@ -95,6 +96,43 @@ automation:
           entity_id: climate.atmeex_brizer_1
         data:
           fan_mode: "3"
+```
+
+**Пример 2: Управление по температуре:**
+```yaml
+automation:
+  - alias: "Включить обогрев при низкой температуре"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.atmeex_brizer_1_temperature
+        below: 18
+    action:
+      - service: climate.set_hvac_mode
+        target:
+          entity_id: climate.atmeex_brizer_1
+        data:
+          hvac_mode: heat
+      - service: climate.set_temperature
+        target:
+          entity_id: climate.atmeex_brizer_1
+        data:
+          temperature: 22
+```
+
+**Пример 3: Управление по влажности:**
+```yaml
+automation:
+  - alias: "Включить вентиляцию при высокой влажности"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.atmeex_brizer_1_humidity
+        above: 70
+    action:
+      - service: climate.set_hvac_mode
+        target:
+          entity_id: climate.atmeex_brizer_1
+        data:
+          hvac_mode: fan_only
 ```
 
 ### Управление через шаблоны
