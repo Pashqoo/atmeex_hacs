@@ -1,0 +1,13 @@
+{
+  "domain": "atmeex_cloud",
+  "name": "Atmeex cloud",
+  "dependencies": [],
+  "documentation": "http://github.com/Pashqoo/atmeex_hacs",
+  "requirements": [
+    "atmeexpy>=0.1.0"
+  ],
+  "codeowners": ["@Pashqoo"],
+  "issue_tracker": "http://github.com/Pashqoo/atmeex_hacs/issues",
+  "config_flow": true,
+  "version": "0.2.0"
+}
