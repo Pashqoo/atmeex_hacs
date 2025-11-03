@@ -31,21 +31,45 @@ class BaseAtmeexSwitch(CoordinatorEntity, SwitchEntity):
     
     async def _set_custom_param(self, param_name: str, value):
         """Set custom parameter directly via HTTP."""
-        # Используем HTTP клиент из API через device
-        import httpx
-        async with httpx.AsyncClient() as client:
-            resp = await client.put(
-                f"https://api.atmeex.ru/devices/{self.device.model.id}/params",
-                json={param_name: value},
-                headers={
-                    "Authorization": f"Bearer {self.coordinator.api.auth._access_token}"
-                }
+        # Используем HTTP клиент из API клиента, который уже настроен правильно
+        try:
+            # Получаем HTTP клиент из API клиента
+            http_client = self.coordinator.api._http_client
+            base_url = getattr(self.coordinator.api, '_base_url', 'https://api.atmeex.ru')
+            
+            # Используем относительный путь, клиент сам добавит base_url
+            resp = await http_client.put(
+                f"/devices/{self.device.model.id}/params",
+                json={param_name: value}
             )
             resp.raise_for_status()
+            
             # Обновляем модель устройства из ответа
             device_info = resp.json()
             from atmeexpy.device import DeviceModel
             self.device.model = DeviceModel.fromdict(device_info)
+        except AttributeError:
+            # Если HTTP клиент недоступен напрямую, используем device._set_params через расширенную модель
+            # Но DeviceSettingsSetModel не поддерживает эти параметры, поэтому делаем прямой PUT
+            try:
+                # Пытаемся использовать HTTP клиент через device
+                if hasattr(self.device, '_http_client'):
+                    resp = await self.device._http_client.put(
+                        f"/devices/{self.device.model.id}/params",
+                        json={param_name: value}
+                    )
+                    resp.raise_for_status()
+                    device_info = resp.json()
+                    from atmeexpy.device import DeviceModel
+                    self.device.model = DeviceModel.fromdict(device_info)
+                else:
+                    raise
+            except Exception as e2:
+                _LOGGER.error(f"Error setting {param_name} to {value}: {e2}")
+                raise
+        except Exception as e:
+            _LOGGER.error(f"Error setting {param_name} to {value}: {e}")
+            raise
 
 class AtmeexAutoModeSwitch(BaseAtmeexSwitch):
     """Switch for automatic mode."""
