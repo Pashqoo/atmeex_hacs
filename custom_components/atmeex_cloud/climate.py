@@ -72,6 +72,14 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
             await self.device.set_power(False)
         elif hvac_mode == HVACMode.HEAT:
             saved_target_temp = self.target_temperature
+            
+            # Если температура не установлена (None), используем значение по умолчанию (22°C)
+            if saved_target_temp is None:
+                saved_target_temp = 22.0
+                _LOGGER.debug(f"{self.name}: target_temperature was None, using default 22°C")
+            
+            # Убеждаемся, что температура в допустимых пределах (10-30°C)
+            saved_target_temp = max(self._attr_min_temp, min(self._attr_max_temp, saved_target_temp))
 
             if self.hvac_mode == HVACMode.OFF:
                 await self.device.set_power(True)
@@ -79,6 +87,9 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
             # Конвертация: API использует температуру * 10 (100-300 вместо 10-30)
             api_temp = int(saved_target_temp * 10)
             await self.device.set_heat_temp(api_temp)
+            
+            # Обновляем target_temperature после установки
+            self._attr_target_temperature = saved_target_temp
         elif hvac_mode == HVACMode.FAN_ONLY:
             if self.hvac_mode == HVACMode.OFF:
                 await self.device.set_power(True)
