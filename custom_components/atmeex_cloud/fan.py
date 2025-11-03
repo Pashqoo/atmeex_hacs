@@ -43,7 +43,6 @@ class AtmeexFanEntity(CoordinatorEntity, FanEntity):
             name=device_name,
             manufacturer="Atmeex",
             model="AirNanny Breezer",
-            via_device=(DOMAIN, coordinator.entry.entry_id),
         )
         
         self._update_state()

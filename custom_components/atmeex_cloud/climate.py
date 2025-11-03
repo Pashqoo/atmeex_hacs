@@ -53,7 +53,6 @@ class AtmeexClimateEntity(CoordinatorEntity, ClimateEntity):
             name=device_name,
             manufacturer="Atmeex",
             model="AirNanny Breezer",
-            via_device=(DOMAIN, coordinator.entry.entry_id),
         )
 
         self._last_mode = None
