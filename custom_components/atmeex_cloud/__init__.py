@@ -149,17 +149,19 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                             except:
                                 pass
                 
-                # Логируем на уровне INFO для лучшей видимости
-                _LOGGER.info(f"Device {device_name} (ID: {device_id}) model structure (without condition): {device_model_attrs}")
-                
                 # Логируем важные статусы для диагностики
                 online_status = getattr(device.model, 'online', None)
                 pwr_on_status = getattr(device.model.settings, 'u_pwr_on', None) if hasattr(device.model, 'settings') else None
                 
+                # Логируем полную структуру на уровне WARNING для лучшей видимости
                 _LOGGER.warning(
-                    f"Device {device_name} (ID: {device_id}): condition is None - CO2, Temperature, Humidity sensors will show 'Unknown'. "
+                    f"Device {device_name} (ID: {device_id}): condition is None. "
                     f"Device online: {online_status}, Power on: {pwr_on_status}. "
-                    f"Condition may only be available when device is online and powered on."
+                    f"Full model data: {device_model_attrs}"
+                )
+                _LOGGER.warning(
+                    f"Device {device_name} (ID: {device_id}): CO2, Temperature, Humidity sensors will show 'Unknown'. "
+                    f"Condition is only available when device is online. Please check device connectivity in Atmeex mobile app."
                 )
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
