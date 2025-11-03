@@ -132,8 +132,26 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                 device_model_attrs = {}
                 if hasattr(device.model, '__dict__'):
                     device_model_attrs = {k: v for k, v in device.model.__dict__.items() if k != 'condition'}
-                _LOGGER.debug(f"Device {device_name} (ID: {device_id}) model structure (without condition): {device_model_attrs}")
-                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'. This might be normal if device is offline or data is not available yet.")
+                elif hasattr(device.model, '__annotations__'):
+                    # Если это dataclass, пробуем получить все поля
+                    for attr_name in device.model.__annotations__:
+                        if attr_name != 'condition':
+                            try:
+                                device_model_attrs[attr_name] = getattr(device.model, attr_name, 'N/A')
+                            except:
+                                pass
+                else:
+                    # Пробуем получить атрибуты через dir
+                    for attr_name in dir(device.model):
+                        if not attr_name.startswith('_') and attr_name != 'condition':
+                            try:
+                                device_model_attrs[attr_name] = getattr(device.model, attr_name, 'N/A')
+                            except:
+                                pass
+                
+                # Логируем на уровне INFO для лучшей видимости
+                _LOGGER.info(f"Device {device_name} (ID: {device_id}) model structure (without condition): {device_model_attrs}")
+                _LOGGER.warning(f"Device {device_name} (ID: {device_id}): condition is None - CO2, Temperature, Humidity sensors will show 'Unknown'. Check if device is online and transmitting data.")
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
             self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:
