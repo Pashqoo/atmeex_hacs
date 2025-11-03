@@ -87,8 +87,8 @@ class AtmeexCO2Sensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning(f"CO2 sensor {self.name}: condition.co2_ppm is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
-        else:
-            _LOGGER.warning(f"CO2 sensor {self.name}: device.model.condition is None")
+            else:
+                _LOGGER.debug(f"CO2 sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -142,8 +142,8 @@ class AtmeexTemperatureSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning(f"Temperature sensor {self.name}: condition.temp_room is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
-        else:
-            _LOGGER.warning(f"Temperature sensor {self.name}: device.model.condition is None")
+            else:
+                _LOGGER.debug(f"Temperature sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -250,8 +250,8 @@ class AtmeexHumiditySensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning(f"Humidity sensor {self.name}: condition.hum_room is None or missing. Available attrs: {[a for a in dir(self.device.model.condition) if not a.startswith('_')]}")
                 self._attr_native_value = None
                 self._attr_available = False
-        else:
-            _LOGGER.warning(f"Humidity sensor {self.name}: device.model.condition is None")
+            else:
+                _LOGGER.debug(f"Humidity sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 

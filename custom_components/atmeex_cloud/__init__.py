@@ -116,7 +116,7 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                 if hasattr(device.model, '__dict__'):
                     device_model_attrs = {k: v for k, v in device.model.__dict__.items() if k != 'condition'}
                 _LOGGER.debug(f"Device {device_name} (ID: {device_id}) model structure (without condition): {device_model_attrs}")
-                _LOGGER.warning(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'. This might be normal if device is offline or data is not available yet.")
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None - sensors will show 'Unknown'. This might be normal if device is offline or data is not available yet.")
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
             self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:
