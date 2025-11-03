@@ -47,6 +47,24 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         self.devices = await self.api.get_devices()
+        
+        # Логируем информацию о полученных устройствах для отладки
+        _LOGGER.debug(f"Received {len(self.devices)} devices from API")
+        for device in self.devices:
+            device_id = device.model.id
+            device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {device_id}"
+            has_condition = device.model.condition is not None
+            
+            if has_condition:
+                condition_info = {
+                    'co2_ppm': getattr(device.model.condition, 'co2_ppm', None),
+                    'temp_room': getattr(device.model.condition, 'temp_room', None),
+                    'temp_in': getattr(device.model.condition, 'temp_in', None),
+                    'hum_room': getattr(device.model.condition, 'hum_room', None),
+                }
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}) condition data: {condition_info}")
+            else:
+                _LOGGER.debug(f"Device {device_name} (ID: {device_id}): condition is None")
 
         if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
             self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:

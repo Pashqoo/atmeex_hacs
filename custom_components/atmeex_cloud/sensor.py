@@ -74,9 +74,16 @@ class AtmeexCO2Sensor(CoordinatorEntity, SensorEntity):
     
     def _update_state(self) -> None:
         if self.device.model.condition:
-            self._attr_native_value = self.device.model.condition.co2_ppm
-            self._attr_available = True
+            co2_value = getattr(self.device.model.condition, 'co2_ppm', None)
+            if co2_value is not None:
+                self._attr_native_value = co2_value
+                self._attr_available = True
+            else:
+                _LOGGER.debug(f"CO2 sensor {self.name}: condition.co2_ppm is None or missing")
+                self._attr_native_value = None
+                self._attr_available = False
         else:
+            _LOGGER.debug(f"CO2 sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -120,10 +127,17 @@ class AtmeexTemperatureSensor(CoordinatorEntity, SensorEntity):
     
     def _update_state(self) -> None:
         if self.device.model.condition:
-            # temp_room в API - это температура * 10
-            self._attr_native_value = self.device.model.condition.temp_room / 10.0
-            self._attr_available = True
+            temp_value = getattr(self.device.model.condition, 'temp_room', None)
+            if temp_value is not None:
+                # temp_room в API - это температура * 10
+                self._attr_native_value = temp_value / 10.0
+                self._attr_available = True
+            else:
+                _LOGGER.debug(f"Temperature sensor {self.name}: condition.temp_room is None or missing")
+                self._attr_native_value = None
+                self._attr_available = False
         else:
+            _LOGGER.debug(f"Temperature sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -167,10 +181,17 @@ class AtmeexTemperatureInSensor(CoordinatorEntity, SensorEntity):
     
     def _update_state(self) -> None:
         if self.device.model.condition:
-            # temp_in в API - это температура * 10
-            self._attr_native_value = self.device.model.condition.temp_in / 10.0
-            self._attr_available = True
+            temp_value = getattr(self.device.model.condition, 'temp_in', None)
+            if temp_value is not None:
+                # temp_in в API - это температура * 10
+                self._attr_native_value = temp_value / 10.0
+                self._attr_available = True
+            else:
+                _LOGGER.debug(f"Temperature In sensor {self.name}: condition.temp_in is None or missing")
+                self._attr_native_value = None
+                self._attr_available = False
         else:
+            _LOGGER.debug(f"Temperature In sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
@@ -214,9 +235,16 @@ class AtmeexHumiditySensor(CoordinatorEntity, SensorEntity):
     
     def _update_state(self) -> None:
         if self.device.model.condition:
-            self._attr_native_value = self.device.model.condition.hum_room
-            self._attr_available = True
+            hum_value = getattr(self.device.model.condition, 'hum_room', None)
+            if hum_value is not None:
+                self._attr_native_value = hum_value
+                self._attr_available = True
+            else:
+                _LOGGER.debug(f"Humidity sensor {self.name}: condition.hum_room is None or missing")
+                self._attr_native_value = None
+                self._attr_available = False
         else:
+            _LOGGER.debug(f"Humidity sensor {self.name}: device.model.condition is None")
             self._attr_native_value = None
             self._attr_available = False
 
