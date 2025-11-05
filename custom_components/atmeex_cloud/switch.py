@@ -7,6 +7,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 
 from atmeexpy.device import Device
+from atmeexpy.device import DeviceSettingsSetModel
 
 from . import AtmeexDataCoordinator
 from .const import DOMAIN
@@ -20,6 +21,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for device in coordinator.devices:
         device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Atmeex {device.model.id}"
         
+        entities.append(AtmeexPowerSwitch(device, coordinator, device_name))
         entities.append(AtmeexAutoModeSwitch(device, coordinator, device_name))
         entities.append(AtmeexNightModeSwitch(device, coordinator, device_name))
         entities.append(AtmeexCoolModeSwitch(device, coordinator, device_name))
@@ -70,6 +72,69 @@ class BaseAtmeexSwitch(CoordinatorEntity, SwitchEntity):
         except Exception as e:
             _LOGGER.error(f"Error setting {param_name} to {value}: {e}")
             raise
+
+class AtmeexPowerSwitch(BaseAtmeexSwitch):
+    """Switch for power on/off."""
+    
+    _attr_icon = 'mdi:power'
+    
+    def __init__(self, device: Device, coordinator: AtmeexDataCoordinator, device_name: str):
+        CoordinatorEntity.__init__(self, coordinator=coordinator)
+        
+        self.coordinator = coordinator
+        self.device = device
+        
+        self._attr_unique_id = f"{DOMAIN}_{device.model.id}_power"
+        self._attr_name = f"{device_name} Power"
+        
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(device.model.id))},
+            name=device_name,
+            manufacturer="Atmeex",
+            model="AirNanny Breezer",
+        )
+        
+        self._update_state()
+    
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn on the device."""
+        _LOGGER.debug(f"Turning on {self.name}")
+        # При включении устанавливаем режим приточной вентиляции по умолчанию
+        # u_damp_pos=0 (открыта), u_pwr_on=True, u_fan_speed >= 1 (вентилятор работает)
+        current_fan_speed = self.device.model.settings.u_fan_speed
+        fan_speed = current_fan_speed if current_fan_speed > 0 else 1  # Минимальная скорость если был выключен
+        await self.device._set_params(DeviceSettingsSetModel(
+            u_pwr_on=True,
+            u_damp_pos=0,  # Заслонка открыта - режим приточной вентиляции
+            u_fan_speed=fan_speed
+        ))
+        await self.coordinator.async_request_refresh()
+    
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn off the device."""
+        _LOGGER.debug(f"Turning off {self.name}")
+        # При выключении закрываем заслонку и выключаем питание
+        await self.device._set_params(DeviceSettingsSetModel(
+            u_pwr_on=False,
+            u_damp_pos=2
+        ))
+        await self.coordinator.async_request_refresh()
+    
+    def _handle_coordinator_update(self) -> None:
+        device_id = self.device.model.id
+        same_devices = [d for d in self.coordinator.devices if d.model.id == device_id]
+        
+        if len(same_devices) == 0:
+            self._attr_available = False
+        else:
+            self.device = same_devices[0]
+            self._update_state()
+        
+        self.async_write_ha_state()
+    
+    def _update_state(self) -> None:
+        self._attr_is_on = self.device.model.settings.u_pwr_on
+        self._attr_available = True
 
 class AtmeexAutoModeSwitch(BaseAtmeexSwitch):
     """Switch for automatic mode."""
