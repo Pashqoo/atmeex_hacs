@@ -12,7 +12,7 @@ _LOGGER = logging.getLogger(__name__)
 # Словарь переводов ошибок для отображения пользователю
 ERROR_TRANSLATIONS = {
     "authentication_failed": "Ошибка аутентификации. Проверьте email и пароль.",
-    "no_devices_found": "В аккаунте не найдено устройств. Проверьте мобильное приложение Atmeex.",
+    "no_devices_found": "В аккаунте не найдено устройств. Если у вас несколько адресов в приложении, проверьте, что устройства видны в выбранном адресе. Проверьте мобильное приложение Atmeex.",
     "connection_error": "Ошибка подключения к серверу Atmeex. Проверьте интернет-соединение.",
     "timeout_error": "Превышено время ожидания ответа от сервера. Попробуйте позже.",
     "invalid_auth": "Неверный email или пароль. Проверьте учетные данные.",
@@ -65,16 +65,54 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             
             _LOGGER.info(f"Authentication successful for {email}. Found {device_count} device(s)")
             
+            # Детальное логирование для диагностики (особенно для случаев с несколькими адресами)
             if device_count == 0:
                 _LOGGER.warning(
                     f"No devices found in account {email}. "
                     "This might mean: 1) No devices are added to this account, "
                     "2) Devices are not connected to internet, "
-                    "3) API returned empty list. "
-                    "Please check the Atmeex mobile app."
+                    "3) API returned empty list, "
+                    "4) Devices might be in a different address/location in the app. "
+                    "Please check the Atmeex mobile app - if you have multiple addresses, "
+                    "make sure devices are visible in the currently selected address."
                 )
+                # Попробуем получить больше информации через прямой API запрос
+                try:
+                    if hasattr(atmeex, '_http_client'):
+                        _LOGGER.debug(f"Attempting direct API call to /devices to get more information")
+                        resp = await atmeex._http_client.get("/devices")
+                        if resp.status_code == 200:
+                            devices_data = resp.json()
+                            _LOGGER.debug(f"Direct API response: {devices_data}")
+                            _LOGGER.info(f"API returned {len(devices_data) if isinstance(devices_data, list) else 'non-list'} devices")
+                        else:
+                            _LOGGER.warning(f"API returned status code {resp.status_code}: {resp.text}")
+                except Exception as api_debug_err:
+                    _LOGGER.debug(f"Could not get additional API info: {api_debug_err}")
+                
                 errors["base"] = "no_devices_found"
             else:
+                # Логируем информацию о найденных устройствах для диагностики
+                _LOGGER.info(f"Successfully found {device_count} device(s) for {email}")
+                for idx, device in enumerate(devices):
+                    device_id = device.model.id if hasattr(device.model, 'id') else 'unknown'
+                    device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {idx+1}"
+                    device_online = getattr(device.model, 'online', None)
+                    # Проверяем, есть ли информация об адресе/локации
+                    device_address = None
+                    if hasattr(device.model, 'address'):
+                        device_address = device.model.address
+                    elif hasattr(device.model, 'location'):
+                        device_address = device.model.location
+                    elif hasattr(device, 'address'):
+                        device_address = device.address
+                    
+                    _LOGGER.info(
+                        f"Device {idx+1}: {device_name} (ID: {device_id}, "
+                        f"Online: {device_online}"
+                        f"{', Address: ' + str(device_address) if device_address else ''})"
+                    )
+                
                 # Сохраняем токены и создаем конфигурацию
                 user_input[CONF_ACCESS_TOKEN] = atmeex.auth._access_token
                 user_input[CONF_REFRESH_TOKEN] = atmeex.auth._refresh_token
