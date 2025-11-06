@@ -16,6 +16,12 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
     coordinator: AtmeexDataCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    
+    device_count = len(coordinator.devices) if coordinator.devices else 0
+    _LOGGER.info(f"Setting up switch entities for {device_count} device(s)")
+    
+    if device_count == 0:
+        _LOGGER.warning("No devices in coordinator when setting up switch entities. Entities will be empty.")
 
     entities = []
     for device in coordinator.devices:
@@ -26,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
         entities.append(AtmeexNightModeSwitch(device, coordinator, device_name))
         entities.append(AtmeexCoolModeSwitch(device, coordinator, device_name))
     
+    _LOGGER.info(f"Creating {len(entities)} switch entities")
     async_add_entities(entities)
 
 class BaseAtmeexSwitch(CoordinatorEntity, SwitchEntity):

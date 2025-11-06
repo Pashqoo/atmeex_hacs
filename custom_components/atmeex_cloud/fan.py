@@ -16,8 +16,16 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
     coordinator: AtmeexDataCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-
-    async_add_entities([AtmeexFanEntity(device, coordinator) for device in coordinator.devices])
+    
+    device_count = len(coordinator.devices) if coordinator.devices else 0
+    _LOGGER.info(f"Setting up fan entities for {device_count} device(s)")
+    
+    if device_count == 0:
+        _LOGGER.warning("No devices in coordinator when setting up fan entities. Entities will be empty.")
+    
+    entities = [AtmeexFanEntity(device, coordinator) for device in coordinator.devices]
+    _LOGGER.info(f"Creating {len(entities)} fan entities")
+    async_add_entities(entities)
 
 class AtmeexFanEntity(CoordinatorEntity, FanEntity):
     

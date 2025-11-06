@@ -29,7 +29,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     coordinator = AtmeexDataCoordinator(hass, api, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
+    
+    # ВАЖНО: Обновляем coordinator ПЕРЕД созданием entities
+    # Это гарантирует, что устройства будут созданы из сырых данных API, если библиотека вернула пустой список
+    _LOGGER.info(f"Refreshing coordinator for entry {entry.entry_id} before creating entities...")
     await coordinator.async_refresh()
+    
+    device_count_after_refresh = len(coordinator.devices) if coordinator.devices else 0
+    _LOGGER.info(f"Coordinator refreshed. Found {device_count_after_refresh} device(s) after refresh")
+    
+    if device_count_after_refresh == 0:
+        _LOGGER.warning(
+            f"No devices found in coordinator after refresh for entry {entry.entry_id}. "
+            f"Entities will not be created. This might be a temporary issue - devices should appear after next coordinator update."
+        )
+    else:
+        _LOGGER.info(f"Creating entities for {device_count_after_refresh} device(s)")
 
     # Исправлено: используем async_forward_entry_setups вместо устаревшего async_forward_entry_setup
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -88,33 +103,49 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                                 from atmeexpy.device import Device, DeviceModel
                                 
                                 parsed_devices = []
-                                for device_data in raw_devices_data:
+                                for idx, device_data in enumerate(raw_devices_data, 1):
                                     try:
+                                        device_id = device_data.get('id', 'unknown')
+                                        device_name = device_data.get('name', f'Device {idx}')
+                                        _LOGGER.debug(f"Attempting to parse device {idx}: {device_name} (ID: {device_id})")
+                                        
                                         # Создаем DeviceModel из словаря
                                         device_model = DeviceModel.fromdict(device_data)
+                                        _LOGGER.debug(f"DeviceModel created successfully for {device_name}")
+                                        
                                         # Создаем Device объект
                                         device = Device(device_model, self.api)
                                         parsed_devices.append(device)
                                         _LOGGER.info(
-                                            f"Successfully parsed device: {device_data.get('name', 'Unknown')} "
-                                            f"(ID: {device_data.get('id')})"
+                                            f"✓ Successfully parsed device: {device_name} (ID: {device_id})"
                                         )
                                     except Exception as parse_err:
-                                        _LOGGER.warning(
-                                            f"Failed to parse device {device_data.get('id', 'unknown')}: {parse_err}"
+                                        _LOGGER.error(
+                                            f"✗ Failed to parse device {device_data.get('id', 'unknown')} "
+                                            f"({device_data.get('name', 'Unknown')}): {parse_err}"
                                         )
+                                        import traceback
+                                        _LOGGER.debug(f"Traceback for device parse error: {traceback.format_exc()}")
                                 
                                 if parsed_devices:
                                     self.devices = parsed_devices
                                     _LOGGER.info(
-                                        f"Successfully created {len(parsed_devices)} device(s) from raw API data"
+                                        f"✓ Successfully created {len(parsed_devices)} device(s) from raw API data. "
+                                        f"Devices are now available in coordinator."
                                     )
                                 else:
-                                    _LOGGER.warning("Failed to parse any devices from raw API data")
+                                    _LOGGER.error(
+                                        "✗ Failed to parse any devices from raw API data. "
+                                        "Check logs above for individual device parse errors."
+                                    )
                             except ImportError as import_err:
-                                _LOGGER.error(f"Failed to import Device/DeviceModel: {import_err}")
+                                _LOGGER.error(f"✗ Failed to import Device/DeviceModel: {import_err}")
+                                import traceback
+                                _LOGGER.debug(f"Import traceback: {traceback.format_exc()}")
                             except Exception as parse_all_err:
-                                _LOGGER.error(f"Failed to parse devices from raw data: {parse_all_err}")
+                                _LOGGER.error(f"✗ Failed to parse devices from raw data: {parse_all_err}")
+                                import traceback
+                                _LOGGER.debug(f"Parse all traceback: {traceback.format_exc()}")
                 except Exception as api_err:
                     _LOGGER.debug(f"Could not check raw API response in coordinator: {api_err}")
             else:
@@ -272,3 +303,9 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                 )
                 # Не обновляем entry, чтобы избежать ошибки
                 # Токены будут обновлены при следующем успешном обновлении
+        
+        # ВАЖНО: Возвращаем devices, чтобы они были доступны через coordinator.data
+        # Это необходимо для правильной работы entities
+        device_count_final = len(self.devices) if self.devices else 0
+        _LOGGER.debug(f"Returning {device_count_final} device(s) from _async_update_data")
+        return self.devices
