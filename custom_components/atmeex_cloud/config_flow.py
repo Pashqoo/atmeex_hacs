@@ -63,10 +63,40 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                     step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
                 )
             
-            _LOGGER.info(f"Authentication successful for {email}. Found {device_count} device(s)")
+            _LOGGER.info(f"Authentication successful for {email}. Found {device_count} device(s) via library")
+            
+            # ИСПРАВЛЕНИЕ: Если библиотека вернула пустой список, проверяем сырой ответ API
+            # Это решает проблему, когда библиотека atmeexpy не может распарсить ответ
+            raw_api_device_count = 0
+            if device_count == 0:
+                try:
+                    if hasattr(atmeex, '_http_client'):
+                        _LOGGER.debug(f"Library returned 0 devices, checking raw API response...")
+                        resp = await atmeex._http_client.get("/devices")
+                        if resp.status_code == 200:
+                            devices_data = resp.json()
+                            if isinstance(devices_data, list):
+                                raw_api_device_count = len(devices_data)
+                                _LOGGER.info(f"Raw API returned {raw_api_device_count} device(s)")
+                                if raw_api_device_count > 0:
+                                    _LOGGER.warning(
+                                        f"Library atmeexpy failed to parse devices, but API returned {raw_api_device_count} device(s). "
+                                        "This is a known issue with the library. Integration will proceed."
+                                    )
+                                    # Логируем информацию об устройствах из сырого ответа
+                                    for idx, device_data in enumerate(devices_data, 1):
+                                        device_id = device_data.get('id', 'unknown')
+                                        device_name = device_data.get('name', f'Device {idx}')
+                                        room_id = device_data.get('room_id')
+                                        _LOGGER.info(
+                                            f"Device {idx} from API: {device_name} (ID: {device_id}"
+                                            f"{', Room ID: ' + str(room_id) if room_id else ''})"
+                                        )
+                except Exception as api_check_err:
+                    _LOGGER.debug(f"Could not check raw API response: {api_check_err}")
             
             # Детальное логирование для диагностики (особенно для случаев с несколькими адресами)
-            if device_count == 0:
+            if device_count == 0 and raw_api_device_count == 0:
                 _LOGGER.warning(
                     f"No devices found in account {email}. "
                     "This might mean: 1) No devices are added to this account, "
@@ -92,31 +122,42 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                 
                 errors["base"] = "no_devices_found"
             else:
-                # Логируем информацию о найденных устройствах для диагностики
-                _LOGGER.info(f"Successfully found {device_count} device(s) for {email}")
-                for idx, device in enumerate(devices):
-                    device_id = device.model.id if hasattr(device.model, 'id') else 'unknown'
-                    device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {idx+1}"
-                    device_online = getattr(device.model, 'online', None)
-                    # Проверяем, есть ли информация об адресе/локации
-                    device_address = None
-                    if hasattr(device.model, 'address'):
-                        device_address = device.model.address
-                    elif hasattr(device.model, 'location'):
-                        device_address = device.model.location
-                    elif hasattr(device, 'address'):
-                        device_address = device.address
-                    
+                # Если библиотека вернула устройства ИЛИ сырой API вернул устройства - разрешаем настройку
+                # Это исправляет проблему с парсингом библиотеки
+                final_device_count = device_count if device_count > 0 else raw_api_device_count
+                
+                if device_count == 0 and raw_api_device_count > 0:
                     _LOGGER.info(
-                        f"Device {idx+1}: {device_name} (ID: {device_id}, "
-                        f"Online: {device_online}"
-                        f"{', Address: ' + str(device_address) if device_address else ''})"
+                        f"Allowing integration setup despite library parsing issue. "
+                        f"API confirmed {raw_api_device_count} device(s) exist."
                     )
+                elif device_count > 0:
+                    # Логируем информацию о найденных устройствах для диагностики
+                    _LOGGER.info(f"Successfully found {device_count} device(s) for {email}")
+                    for idx, device in enumerate(devices):
+                        device_id = device.model.id if hasattr(device.model, 'id') else 'unknown'
+                        device_name = device.model.name if hasattr(device.model, 'name') and device.model.name else f"Device {idx+1}"
+                        device_online = getattr(device.model, 'online', None)
+                        # Проверяем, есть ли информация об адресе/локации
+                        device_address = None
+                        if hasattr(device.model, 'address'):
+                            device_address = device.model.address
+                        elif hasattr(device.model, 'location'):
+                            device_address = device.model.location
+                        elif hasattr(device, 'address'):
+                            device_address = device.address
+                        
+                        _LOGGER.info(
+                            f"Device {idx+1}: {device_name} (ID: {device_id}, "
+                            f"Online: {device_online}"
+                            f"{', Address: ' + str(device_address) if device_address else ''})"
+                        )
                 
                 # Сохраняем токены и создаем конфигурацию
                 user_input[CONF_ACCESS_TOKEN] = atmeex.auth._access_token
                 user_input[CONF_REFRESH_TOKEN] = atmeex.auth._refresh_token
-                _LOGGER.info(f"Successfully configured integration for {email} with {device_count} device(s)")
+                final_device_count = device_count if device_count > 0 else raw_api_device_count
+                _LOGGER.info(f"Successfully configured integration for {email} with {final_device_count} device(s)")
                 return self.async_create_entry(
                     title=email,
                     data=user_input,
