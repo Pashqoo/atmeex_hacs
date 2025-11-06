@@ -20,36 +20,84 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     fixed_data = device_data.copy()
     
-    # Исправляем settings
-    if 'settings' in fixed_data and fixed_data['settings']:
+    # Убеждаемся, что все обязательные поля присутствуют
+    # DeviceModel требует: id, mac, type, name, room_id, owner_id, created_at, socket_id, fw_ver, model, online, settings
+    required_fields = {
+        'id': 0,
+        'mac': '',
+        'type': 1,
+        'name': 'Unknown Device',
+        'room_id': 0,
+        'owner_id': 0,
+        'created_at': '',
+        'socket_id': '',
+        'fw_ver': '',
+        'model': 'A7',
+        'online': False,
+    }
+    
+    for field, default_value in required_fields.items():
+        if field not in fixed_data or fixed_data[field] is None:
+            fixed_data[field] = default_value
+            _LOGGER.debug(f"Added missing required field {field} with default value: {default_value}")
+    
+    # Исправляем settings - обязательное поле для DeviceModel
+    if 'settings' not in fixed_data or not fixed_data['settings']:
+        # Создаем минимальный settings объект
+        fixed_data['settings'] = {
+            'id': 0,
+            'device_id': fixed_data.get('id', 0),
+            'u_pwr_on': False,
+            'u_fan_speed': 0,
+            'u_damp_pos': 2,
+            'u_temp_room': 0,
+            'u_cool_mode': False,
+        }
+        _LOGGER.debug("Created default settings object")
+    else:
         settings = fixed_data['settings'].copy()
+        
+        # Убеждаемся, что обязательные поля settings присутствуют
+        required_settings_fields = {
+            'id': 0,
+            'device_id': fixed_data.get('id', 0),
+            'u_pwr_on': False,
+            'u_fan_speed': 0,
+            'u_damp_pos': 2,
+            'u_temp_room': 0,
+            'u_cool_mode': False,
+        }
+        
+        for field, default_value in required_settings_fields.items():
+            if field not in settings or settings[field] is None:
+                settings[field] = default_value
+                _LOGGER.debug(f"Added missing settings field {field} with default value: {default_value}")
         
         # Исправляем u_hum_stg - должно быть int, но может быть None
         # Удаляем поле если None, чтобы библиотека использовала значение по умолчанию
         if 'u_hum_stg' in settings and settings['u_hum_stg'] is None:
             del settings['u_hum_stg']
         
-        # Исправляем другие поля, которые могут быть None
-        # Для Optional полей удаляем None, для обязательных устанавливаем значения по умолчанию
-        if 'u_fan_speed' in settings and settings['u_fan_speed'] is None:
-            settings['u_fan_speed'] = 0
-        if 'u_damp_pos' in settings and settings['u_damp_pos'] is None:
-            settings['u_damp_pos'] = 2  # Закрыта по умолчанию
-        if 'u_temp_room' in settings and settings['u_temp_room'] is None:
-            settings['u_temp_room'] = 0
         # u_auto и u_night могут быть None (Optional), удаляем их если None
         if 'u_auto' in settings and settings['u_auto'] is None:
             del settings['u_auto']
         if 'u_night' in settings and settings['u_night'] is None:
             del settings['u_night']
         
-        # Исправляем u_cool_mode - должно быть bool
+        # Убеждаемся, что числовые поля имеют правильные типы
+        if 'u_fan_speed' in settings and settings['u_fan_speed'] is None:
+            settings['u_fan_speed'] = 0
+        if 'u_damp_pos' in settings and settings['u_damp_pos'] is None:
+            settings['u_damp_pos'] = 2
+        if 'u_temp_room' in settings and settings['u_temp_room'] is None:
+            settings['u_temp_room'] = 0
         if 'u_cool_mode' in settings and settings['u_cool_mode'] is None:
             settings['u_cool_mode'] = False
         
         fixed_data['settings'] = settings
     
-    # Исправляем condition, если он есть
+    # Condition - опциональное поле, может быть None
+    # Если оно есть, исправляем None значения
     if 'condition' in fixed_data and fixed_data['condition']:
         condition = fixed_data['condition'].copy()
         
@@ -58,11 +106,12 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
                          'fan_speed', 'damp_pos', 'pwr_on', 'no_water']
         for field in numeric_fields:
             if field in condition and condition[field] is None:
-                if field in ['co2_ppm', 'temp_room', 'temp_in', 'hum_room', 'hum_stg', 
-                            'fan_speed', 'damp_pos', 'pwr_on', 'no_water']:
-                    condition[field] = 0
+                condition[field] = 0
         
         fixed_data['condition'] = condition
+    else:
+        # Condition может быть None - это нормально
+        fixed_data['condition'] = None
     
     return fixed_data
 
@@ -142,69 +191,35 @@ def create_device_manually(device_data: Dict[str, Any], api_client) -> Optional[
     Создает Device объект вручную, обходя проблемы библиотеки.
     
     Это запасной вариант, если DeviceModel.fromdict() не работает.
+    Использует исправленные данные и пробует fromdict снова.
     """
     try:
         from atmeexpy.device import Device, DeviceModel
         
-        # Создаем DeviceModel вручную, устанавливая только доступные поля
-        device_model = DeviceModel()
+        # Исправляем данные еще раз для ручного создания
+        fixed_data = fix_device_data_for_parsing(device_data)
         
-        # Устанавливаем основные поля
-        if 'id' in device_data:
-            device_model.id = device_data['id']
-        if 'name' in device_data:
-            device_model.name = device_data['name']
-        if 'mac' in device_data:
-            device_model.mac = device_data['mac']
-        if 'online' in device_data:
-            device_model.online = device_data['online']
-        if 'model' in device_data:
-            device_model.model = device_data['model']
-        if 'fw_ver' in device_data:
-            device_model.fw_ver = device_data['fw_ver']
-        
-        # Устанавливаем settings
-        if 'settings' in device_data and device_data['settings']:
-            from atmeexpy.device import DeviceSettingsModel
-            settings = DeviceSettingsModel()
+        # Пробуем использовать fromdict с исправленными данными
+        # Если это не работает, значит проблема глубже
+        try:
+            device_model = DeviceModel.fromdict(fixed_data)
+            device = Device(device_model, api_client)
+            _LOGGER.debug(f"Successfully created DeviceModel using fromdict with fixed data")
+            return device
+        except Exception as fromdict_err:
+            _LOGGER.warning(
+                f"DeviceModel.fromdict() failed even with fixed data: {fromdict_err}. "
+                f"Trying to create DeviceModel with explicit constructor..."
+            )
             
-            settings_data = device_data['settings']
-            if 'id' in settings_data:
-                settings.id = settings_data['id']
-            if 'device_id' in settings_data:
-                settings.device_id = settings_data['device_id']
-            if 'u_pwr_on' in settings_data:
-                settings.u_pwr_on = settings_data['u_pwr_on'] if settings_data['u_pwr_on'] is not None else False
-            if 'u_fan_speed' in settings_data:
-                settings.u_fan_speed = settings_data['u_fan_speed'] if settings_data['u_fan_speed'] is not None else 0
-            if 'u_damp_pos' in settings_data:
-                settings.u_damp_pos = settings_data['u_damp_pos'] if settings_data['u_damp_pos'] is not None else 2
-            if 'u_temp_room' in settings_data:
-                settings.u_temp_room = settings_data['u_temp_room'] if settings_data['u_temp_room'] is not None else 0
-            if 'u_hum_stg' in settings_data:
-                settings.u_hum_stg = settings_data['u_hum_stg'] if settings_data['u_hum_stg'] is not None else None
-            if 'u_auto' in settings_data:
-                settings.u_auto = settings_data['u_auto'] if settings_data['u_auto'] is not None else None
-            if 'u_night' in settings_data:
-                settings.u_night = settings_data['u_night'] if settings_data['u_night'] is not None else None
-            if 'u_cool_mode' in settings_data:
-                settings.u_cool_mode = settings_data['u_cool_mode'] if settings_data['u_cool_mode'] is not None else False
-            if 'u_night_start' in settings_data:
-                settings.u_night_start = settings_data['u_night_start']
-            if 'u_night_stop' in settings_data:
-                settings.u_night_stop = settings_data['u_night_stop']
-            if 'u_time_zone' in settings_data:
-                settings.u_time_zone = settings_data['u_time_zone']
-            
-            device_model.settings = settings
-        
-        # Condition устанавливаем как None - он будет получен позже через API
-        device_model.condition = None
-        
-        # Создаем Device объект
-        device = Device(device_model, api_client)
-        
-        return device
+            # Последняя попытка: создаем через конструктор с явными аргументами
+            # Но это сложно, так как нужно знать все обязательные поля
+            # Лучше просто логировать ошибку и вернуть None
+            _LOGGER.error(
+                f"Cannot create DeviceModel manually - constructor requires all fields. "
+                f"Original error: {fromdict_err}"
+            )
+            return None
         
     except Exception as e:
         _LOGGER.error(f"Error in create_device_manually: {e}")
