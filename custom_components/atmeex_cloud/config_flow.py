@@ -52,8 +52,18 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.info(f"Fetching devices for account {email}...")
             
             # Получаем устройства (это также может выполнить аутентификацию)
-            devices = await atmeex.get_devices()
-            device_count = len(devices) if devices else 0
+            # ВАЖНО: Библиотека atmeexpy может печатать данные в stdout, но возвращать пустой список
+            # Поэтому мы также проверяем сырой ответ API
+            try:
+                devices = await atmeex.get_devices()
+                device_count = len(devices) if devices else 0
+                _LOGGER.debug(f"get_devices() returned: type={type(devices)}, count={device_count}")
+                if devices:
+                    _LOGGER.debug(f"First device type: {type(devices[0]) if len(devices) > 0 else 'N/A'}")
+            except Exception as get_devices_err:
+                _LOGGER.error(f"Error calling get_devices(): {get_devices_err}")
+                devices = []
+                device_count = 0
             
             # Проверяем, что аутентификация прошла успешно после получения устройств
             if not hasattr(atmeex.auth, '_access_token') or not atmeex.auth._access_token:
@@ -68,34 +78,77 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             # ИСПРАВЛЕНИЕ: Если библиотека вернула пустой список, проверяем сырой ответ API
             # Это решает проблему, когда библиотека atmeexpy не может распарсить ответ
             raw_api_device_count = 0
+            raw_devices_data = None
             if device_count == 0:
-                try:
-                    if hasattr(atmeex, '_http_client'):
-                        _LOGGER.debug(f"Library returned 0 devices, checking raw API response...")
-                        resp = await atmeex._http_client.get("/devices")
-                        if resp.status_code == 200:
-                            devices_data = resp.json()
-                            if isinstance(devices_data, list):
-                                raw_api_device_count = len(devices_data)
-                                _LOGGER.info(f"Raw API returned {raw_api_device_count} device(s)")
-                                if raw_api_device_count > 0:
-                                    _LOGGER.warning(
-                                        f"Library atmeexpy failed to parse devices, but API returned {raw_api_device_count} device(s). "
-                                        "This is a known issue with the library. Integration will proceed."
-                                    )
-                                    # Логируем информацию об устройствах из сырого ответа
-                                    for idx, device_data in enumerate(devices_data, 1):
-                                        device_id = device_data.get('id', 'unknown')
-                                        device_name = device_data.get('name', f'Device {idx}')
-                                        room_id = device_data.get('room_id')
-                                        _LOGGER.info(
-                                            f"Device {idx} from API: {device_name} (ID: {device_id}"
-                                            f"{', Room ID: ' + str(room_id) if room_id else ''})"
+                _LOGGER.warning(f"Library returned 0 devices, attempting to check raw API response...")
+                
+                # Пробуем разные способы доступа к HTTP клиенту
+                http_client = None
+                http_client_source = None
+                
+                # Способ 1: Прямой доступ через _http_client
+                if hasattr(atmeex, '_http_client'):
+                    http_client = atmeex._http_client
+                    http_client_source = '_http_client'
+                # Способ 2: Через http_client (без подчеркивания)
+                elif hasattr(atmeex, 'http_client'):
+                    http_client = atmeex.http_client
+                    http_client_source = 'http_client'
+                # Способ 3: Через вложенный _client
+                elif hasattr(atmeex, '_client') and hasattr(atmeex._client, '_http_client'):
+                    http_client = atmeex._client._http_client
+                    http_client_source = '_client._http_client'
+                
+                if http_client:
+                    try:
+                        _LOGGER.debug(f"HTTP client found via {http_client_source}, making request to /devices...")
+                        if hasattr(http_client, 'get'):
+                            resp = await http_client.get("/devices")
+                            _LOGGER.debug(f"Response status: {resp.status_code}")
+                            
+                            if resp.status_code == 200:
+                                raw_devices_data = resp.json()
+                                if isinstance(raw_devices_data, list):
+                                    raw_api_device_count = len(raw_devices_data)
+                                    _LOGGER.info(f"✓ Raw API returned {raw_api_device_count} device(s)")
+                                    
+                                    if raw_api_device_count > 0:
+                                        _LOGGER.warning(
+                                            f"Library atmeexpy failed to parse devices, but API returned {raw_api_device_count} device(s). "
+                                            "This is a known issue with the library. Integration will proceed."
                                         )
-                except Exception as api_check_err:
-                    _LOGGER.debug(f"Could not check raw API response: {api_check_err}")
+                                        # Логируем информацию об устройствах из сырого ответа
+                                        for idx, device_data in enumerate(raw_devices_data, 1):
+                                            device_id = device_data.get('id', 'unknown')
+                                            device_name = device_data.get('name', f'Device {idx}')
+                                            room_id = device_data.get('room_id')
+                                            online = device_data.get('online', False)
+                                            _LOGGER.info(
+                                                f"  Device {idx}: {device_name} (ID: {device_id}, "
+                                                f"Online: {online}"
+                                                f"{', Room ID: ' + str(room_id) if room_id else ''})"
+                                            )
+                                else:
+                                    _LOGGER.warning(f"API returned non-list data: {type(raw_devices_data).__name__}")
+                            else:
+                                _LOGGER.warning(f"API returned status {resp.status_code}: {resp.text[:200]}")
+                    except AttributeError as attr_err:
+                        _LOGGER.warning(f"HTTP client found but missing 'get' method: {attr_err}")
+                    except Exception as api_check_err:
+                        _LOGGER.warning(f"Error checking raw API response: {api_check_err}")
+                        import traceback
+                        _LOGGER.debug(f"Traceback: {traceback.format_exc()}")
+                else:
+                    _LOGGER.warning(
+                        "HTTP client not accessible. Tried: _http_client, http_client, _client._http_client. "
+                        "Cannot verify if API returned devices."
+                    )
+                    # Логируем доступные атрибуты для отладки
+                    available_attrs = [attr for attr in dir(atmeex) if not attr.startswith('__')]
+                    _LOGGER.debug(f"Available attributes on AtmeexClient: {', '.join(available_attrs[:20])}")
             
             # Детальное логирование для диагностики (особенно для случаев с несколькими адресами)
+            # ВАЖНО: Если raw_api_device_count > 0, значит устройства есть, и мы разрешаем настройку
             if device_count == 0 and raw_api_device_count == 0:
                 _LOGGER.warning(
                     f"No devices found in account {email}. "
@@ -106,20 +159,11 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                     "Please check the Atmeex mobile app - if you have multiple addresses, "
                     "make sure devices are visible in the currently selected address."
                 )
-                # Попробуем получить больше информации через прямой API запрос
-                try:
-                    if hasattr(atmeex, '_http_client'):
-                        _LOGGER.debug(f"Attempting direct API call to /devices to get more information")
-                        resp = await atmeex._http_client.get("/devices")
-                        if resp.status_code == 200:
-                            devices_data = resp.json()
-                            _LOGGER.debug(f"Direct API response: {devices_data}")
-                            _LOGGER.info(f"API returned {len(devices_data) if isinstance(devices_data, list) else 'non-list'} devices")
-                        else:
-                            _LOGGER.warning(f"API returned status code {resp.status_code}: {resp.text}")
-                except Exception as api_debug_err:
-                    _LOGGER.debug(f"Could not get additional API info: {api_debug_err}")
-                
+                _LOGGER.warning(
+                    f"NOTE: HTTP client was not accessible to verify devices via raw API. "
+                    f"If devices exist in the app, this might be a library issue. "
+                    f"Check logs for more details."
+                )
                 errors["base"] = "no_devices_found"
             else:
                 # Если библиотека вернула устройства ИЛИ сырой API вернул устройства - разрешаем настройку
