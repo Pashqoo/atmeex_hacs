@@ -168,9 +168,35 @@ def parse_devices_from_raw_data(
                 _LOGGER.debug(f"DeviceModel created successfully for {device_name}")
                 
                 # Создаем Device объект
-                device = Device(device_model, api_client)
-                parsed_devices.append(device)
-                _LOGGER.info(f"✓ Successfully parsed device: {device_name} (ID: {device_id})")
+                # ВАЖНО: Проверяем правильность создания Device
+                # Device может требовать другие параметры или способ создания
+                try:
+                    # Пробуем стандартный способ
+                    device = Device(device_model, api_client)
+                    parsed_devices.append(device)
+                    _LOGGER.info(f"✓ Successfully parsed device: {device_name} (ID: {device_id})")
+                except TypeError as device_err:
+                    # Если ошибка "not iterable", возможно Device требует другой формат
+                    _LOGGER.warning(
+                        f"Device constructor failed: {device_err}. "
+                        f"Trying alternative Device creation method..."
+                    )
+                    # Пробуем создать Device через другой способ
+                    # Возможно, нужно передать api_client по-другому
+                    try:
+                        # Пробуем без api_client или с другим форматом
+                        device = Device(device_model)
+                        # Устанавливаем api_client отдельно, если есть такой метод
+                        if hasattr(device, 'set_client') or hasattr(device, '_client'):
+                            if hasattr(device, 'set_client'):
+                                device.set_client(api_client)
+                            elif hasattr(device, '_client'):
+                                device._client = api_client
+                        parsed_devices.append(device)
+                        _LOGGER.info(f"✓ Successfully created device with alternative method: {device_name} (ID: {device_id})")
+                    except Exception as alt_err:
+                        _LOGGER.error(f"Alternative Device creation also failed: {alt_err}")
+                        raise device_err  # Пробрасываем оригинальную ошибку
                 
             except Exception as library_err:
                 _LOGGER.warning(
@@ -220,9 +246,33 @@ def create_device_manually(device_data: Dict[str, Any], api_client) -> Optional[
         # Если это не работает, значит проблема глубже
         try:
             device_model = DeviceModel.fromdict(fixed_data)
-            device = Device(device_model, api_client)
-            _LOGGER.debug(f"Successfully created DeviceModel using fromdict with fixed data")
-            return device
+            
+            # Пробуем создать Device
+            try:
+                device = Device(device_model, api_client)
+                _LOGGER.debug(f"Successfully created DeviceModel using fromdict with fixed data")
+                return device
+            except TypeError as device_err:
+                # Если ошибка "not iterable", пробуем альтернативный способ
+                _LOGGER.warning(
+                    f"Device constructor failed: {device_err}. "
+                    f"Trying alternative Device creation method..."
+                )
+                try:
+                    # Пробуем без api_client или с другим форматом
+                    device = Device(device_model)
+                    # Устанавливаем api_client отдельно, если есть такой метод
+                    if hasattr(device, 'set_client') or hasattr(device, '_client'):
+                        if hasattr(device, 'set_client'):
+                            device.set_client(api_client)
+                        elif hasattr(device, '_client'):
+                            device._client = api_client
+                    _LOGGER.debug(f"Successfully created Device with alternative method")
+                    return device
+                except Exception as alt_err:
+                    _LOGGER.error(f"Alternative Device creation also failed: {alt_err}")
+                    raise device_err  # Пробрасываем оригинальную ошибку
+                    
         except Exception as fromdict_err:
             _LOGGER.warning(
                 f"DeviceModel.fromdict() failed even with fixed data: {fromdict_err}. "
