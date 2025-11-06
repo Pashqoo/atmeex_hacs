@@ -185,4 +185,26 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
             data[CONF_ACCESS_TOKEN] = self.api.auth._access_token
             data[CONF_REFRESH_TOKEN] = self.api.auth._refresh_token
 
-            await self.hass.config_entries.async_update_entry(self.entry, data=data)
+            # Исправлено: async_update_entry должен быть async функцией
+            # Но в некоторых случаях может возвращать bool (баг или старая версия HA)
+            # Используем безопасный способ обновления
+            try:
+                # Проверяем, является ли метод async функцией
+                update_method = self.hass.config_entries.async_update_entry
+                if asyncio.iscoroutinefunction(update_method):
+                    await update_method(self.entry, data=data)
+                else:
+                    # Если это не async функция, вызываем напрямую
+                    # Это не должно происходить, но обрабатываем для совместимости
+                    _LOGGER.debug("async_update_entry is not a coroutine function, calling directly")
+                    update_method(self.entry, data=data)
+            except TypeError as e:
+                # Если возникает ошибка "object bool can't be used in 'await' expression"
+                # это означает, что метод вернул bool вместо coroutine
+                _LOGGER.warning(
+                    f"async_update_entry returned non-coroutine (likely bool). "
+                    f"This might be a Home Assistant version issue. Error: {e}. "
+                    f"Skipping entry update - tokens will be updated on next successful update."
+                )
+                # Не обновляем entry, чтобы избежать ошибки
+                # Токены будут обновлены при следующем успешном обновлении
