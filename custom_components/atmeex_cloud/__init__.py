@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import (
 from atmeexpy.client import AtmeexClient
 
 from .const import CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, DOMAIN, PLATFORMS
+from .device_parser import parse_devices_from_raw_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,54 +99,21 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                                 f"Attempting to create Device objects from raw data..."
                             )
                             
-                            # Пробуем создать объекты Device из сырых данных
-                            try:
-                                from atmeexpy.device import Device, DeviceModel
-                                
-                                parsed_devices = []
-                                for idx, device_data in enumerate(raw_devices_data, 1):
-                                    try:
-                                        device_id = device_data.get('id', 'unknown')
-                                        device_name = device_data.get('name', f'Device {idx}')
-                                        _LOGGER.debug(f"Attempting to parse device {idx}: {device_name} (ID: {device_id})")
-                                        
-                                        # Создаем DeviceModel из словаря
-                                        device_model = DeviceModel.fromdict(device_data)
-                                        _LOGGER.debug(f"DeviceModel created successfully for {device_name}")
-                                        
-                                        # Создаем Device объект
-                                        device = Device(device_model, self.api)
-                                        parsed_devices.append(device)
-                                        _LOGGER.info(
-                                            f"✓ Successfully parsed device: {device_name} (ID: {device_id})"
-                                        )
-                                    except Exception as parse_err:
-                                        _LOGGER.error(
-                                            f"✗ Failed to parse device {device_data.get('id', 'unknown')} "
-                                            f"({device_data.get('name', 'Unknown')}): {parse_err}"
-                                        )
-                                        import traceback
-                                        _LOGGER.debug(f"Traceback for device parse error: {traceback.format_exc()}")
-                                
-                                if parsed_devices:
-                                    self.devices = parsed_devices
-                                    _LOGGER.info(
-                                        f"✓ Successfully created {len(parsed_devices)} device(s) from raw API data. "
-                                        f"Devices are now available in coordinator."
-                                    )
-                                else:
-                                    _LOGGER.error(
-                                        "✗ Failed to parse any devices from raw API data. "
-                                        "Check logs above for individual device parse errors."
-                                    )
-                            except ImportError as import_err:
-                                _LOGGER.error(f"✗ Failed to import Device/DeviceModel: {import_err}")
-                                import traceback
-                                _LOGGER.debug(f"Import traceback: {traceback.format_exc()}")
-                            except Exception as parse_all_err:
-                                _LOGGER.error(f"✗ Failed to parse devices from raw data: {parse_all_err}")
-                                import traceback
-                                _LOGGER.debug(f"Parse all traceback: {traceback.format_exc()}")
+                            # Используем наш собственный парсер, который обходит проблемы библиотеки atmeexpy
+                            _LOGGER.info("Using custom device parser to handle API data...")
+                            parsed_devices = parse_devices_from_raw_data(raw_devices_data, self.api)
+                            
+                            if parsed_devices:
+                                self.devices = parsed_devices
+                                _LOGGER.info(
+                                    f"✓ Successfully created {len(parsed_devices)} device(s) from raw API data using custom parser. "
+                                    f"Devices are now available in coordinator."
+                                )
+                            else:
+                                _LOGGER.error(
+                                    "✗ Failed to parse any devices from raw API data using custom parser. "
+                                    "Check logs above for individual device parse errors."
+                                )
                 except Exception as api_err:
                     _LOGGER.debug(f"Could not check raw API response in coordinator: {api_err}")
             else:
