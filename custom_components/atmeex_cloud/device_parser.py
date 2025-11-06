@@ -102,8 +102,14 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
             settings['u_night_start'] = None
         if 'u_night_stop' not in settings:
             settings['u_night_stop'] = None
+        # u_time_zone должен быть str, но API может вернуть int
         if 'u_time_zone' not in settings:
             settings['u_time_zone'] = None
+        elif settings['u_time_zone'] is not None:
+            # Конвертируем int в str, если нужно
+            if isinstance(settings['u_time_zone'], int):
+                settings['u_time_zone'] = str(settings['u_time_zone'])
+                _LOGGER.debug(f"Converted u_time_zone from int to str: {settings['u_time_zone']}")
         
         fixed_data['settings'] = settings
     
