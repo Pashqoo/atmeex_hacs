@@ -52,9 +52,73 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         self.devices = await self.api.get_devices()
+        device_count = len(self.devices) if self.devices else 0
         
         # Логируем информацию о полученных устройствах для отладки
-        _LOGGER.debug(f"Received {len(self.devices)} devices from API")
+        _LOGGER.debug(f"Received {device_count} devices from API via library")
+        
+        # ИСПРАВЛЕНИЕ: Если библиотека вернула пустой список, проверяем сырой ответ API
+        # Это решает проблему, когда библиотека atmeexpy не может распарсить ответ
+        if device_count == 0:
+            _LOGGER.warning("Library returned 0 devices, checking raw API response in coordinator...")
+            
+            # Пробуем разные способы доступа к HTTP клиенту
+            http_client = None
+            if hasattr(self.api, '_http_client'):
+                http_client = self.api._http_client
+            elif hasattr(self.api, 'http_client'):
+                http_client = self.api.http_client
+            elif hasattr(self.api, '_client') and hasattr(self.api._client, '_http_client'):
+                http_client = self.api._client._http_client
+            
+            if http_client and hasattr(http_client, 'get'):
+                try:
+                    resp = await http_client.get("/devices")
+                    if resp.status_code == 200:
+                        raw_devices_data = resp.json()
+                        if isinstance(raw_devices_data, list) and len(raw_devices_data) > 0:
+                            _LOGGER.warning(
+                                f"Library atmeexpy failed to parse devices in coordinator, "
+                                f"but API returned {len(raw_devices_data)} device(s). "
+                                f"Attempting to create Device objects from raw data..."
+                            )
+                            
+                            # Пробуем создать объекты Device из сырых данных
+                            try:
+                                from atmeexpy.device import Device, DeviceModel
+                                
+                                parsed_devices = []
+                                for device_data in raw_devices_data:
+                                    try:
+                                        # Создаем DeviceModel из словаря
+                                        device_model = DeviceModel.fromdict(device_data)
+                                        # Создаем Device объект
+                                        device = Device(device_model, self.api)
+                                        parsed_devices.append(device)
+                                        _LOGGER.info(
+                                            f"Successfully parsed device: {device_data.get('name', 'Unknown')} "
+                                            f"(ID: {device_data.get('id')})"
+                                        )
+                                    except Exception as parse_err:
+                                        _LOGGER.warning(
+                                            f"Failed to parse device {device_data.get('id', 'unknown')}: {parse_err}"
+                                        )
+                                
+                                if parsed_devices:
+                                    self.devices = parsed_devices
+                                    _LOGGER.info(
+                                        f"Successfully created {len(parsed_devices)} device(s) from raw API data"
+                                    )
+                                else:
+                                    _LOGGER.warning("Failed to parse any devices from raw API data")
+                            except ImportError as import_err:
+                                _LOGGER.error(f"Failed to import Device/DeviceModel: {import_err}")
+                            except Exception as parse_all_err:
+                                _LOGGER.error(f"Failed to parse devices from raw data: {parse_all_err}")
+                except Exception as api_err:
+                    _LOGGER.debug(f"Could not check raw API response in coordinator: {api_err}")
+            else:
+                _LOGGER.debug("HTTP client not accessible in coordinator for raw API check")
         
         # Пробуем обновить данные каждого устройства отдельно, чтобы получить condition
         for device in self.devices:
