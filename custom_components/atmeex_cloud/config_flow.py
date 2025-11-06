@@ -149,7 +149,28 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             
             # Детальное логирование для диагностики (особенно для случаев с несколькими адресами)
             # ВАЖНО: Если raw_api_device_count > 0, значит устройства есть, и мы разрешаем настройку
+            
+            # ВРЕМЕННОЕ РЕШЕНИЕ: Если HTTP клиент недоступен, но аутентификация прошла успешно,
+            # разрешаем настройку с предупреждением. Это обходит проблему с библиотекой atmeexpy.
+            # Пользователь может настроить интеграцию, и устройства появятся при первом обновлении.
+            allow_setup_without_devices = False
             if device_count == 0 and raw_api_device_count == 0:
+                # Проверяем, доступен ли HTTP клиент вообще
+                http_client_available = (
+                    hasattr(atmeex, '_http_client') or 
+                    hasattr(atmeex, 'http_client') or 
+                    (hasattr(atmeex, '_client') and hasattr(atmeex._client, '_http_client'))
+                )
+                
+                if not http_client_available:
+                    _LOGGER.warning(
+                        f"HTTP client not accessible, but authentication successful. "
+                        f"This might be a library issue. Allowing setup to proceed - "
+                        f"devices should appear after first coordinator update."
+                    )
+                    allow_setup_without_devices = True
+            
+            if device_count == 0 and raw_api_device_count == 0 and not allow_setup_without_devices:
                 _LOGGER.warning(
                     f"No devices found in account {email}. "
                     "This might mean: 1) No devices are added to this account, "
@@ -165,6 +186,19 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                     f"Check logs for more details."
                 )
                 errors["base"] = "no_devices_found"
+            elif allow_setup_without_devices:
+                # Разрешаем настройку даже без устройств, если HTTP клиент недоступен
+                # Это временное решение для обхода проблемы с библиотекой
+                _LOGGER.info(
+                    f"Allowing integration setup despite no devices found. "
+                    f"Devices should appear after first coordinator update."
+                )
+                user_input[CONF_ACCESS_TOKEN] = atmeex.auth._access_token
+                user_input[CONF_REFRESH_TOKEN] = atmeex.auth._refresh_token
+                return self.async_create_entry(
+                    title=email,
+                    data=user_input,
+                )
             else:
                 # Если библиотека вернула устройства ИЛИ сырой API вернул устройства - разрешаем настройку
                 # Это исправляет проблему с парсингом библиотеки
