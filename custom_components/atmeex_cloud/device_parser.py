@@ -53,14 +53,15 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
             'u_temp_room': 0,
             'u_cool_mode': False,
             'u_hum_stg': 0,  # Обязательное поле, устанавливаем 0 если None
+            'u_auto': False,  # Должно быть bool, не None
+            'u_night': False,  # Должно быть bool, не None
         }
         _LOGGER.debug("Created default settings object with all required fields")
     else:
         settings = fixed_data['settings'].copy()
         
         # Убеждаемся, что обязательные поля settings присутствуют
-        # ВАЖНО: u_hum_stg требуется библиотекой, но может быть None в API
-        # Пробуем установить 0 если None, так как библиотека может не принимать None
+        # ВАЖНО: Все поля должны иметь правильные типы (не None для bool/int)
         required_settings_fields = {
             'id': 0,
             'device_id': fixed_data.get('id', 0),
@@ -69,7 +70,9 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
             'u_damp_pos': 2,
             'u_temp_room': 0,
             'u_cool_mode': False,
-            'u_hum_stg': 0,  # Устанавливаем 0 вместо None, так как библиотека требует значение
+            'u_hum_stg': 0,  # Устанавливаем 0 вместо None
+            'u_auto': False,  # Должно быть bool, не None
+            'u_night': False,  # Должно быть bool, не None
         }
         
         for field, default_value in required_settings_fields.items():
@@ -87,11 +90,12 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
         if 'u_cool_mode' not in settings or settings['u_cool_mode'] is None:
             settings['u_cool_mode'] = False
         
-        # u_auto и u_night могут быть None (Optional), но поле должно присутствовать
-        if 'u_auto' not in settings:
-            settings['u_auto'] = None
-        if 'u_night' not in settings:
-            settings['u_night'] = None
+        # u_auto и u_night должны быть bool, не None
+        # Библиотека требует bool, поэтому устанавливаем False если None
+        if 'u_auto' not in settings or settings['u_auto'] is None:
+            settings['u_auto'] = False
+        if 'u_night' not in settings or settings['u_night'] is None:
+            settings['u_night'] = False
         
         # Дополнительные поля settings, которые могут отсутствовать
         if 'u_night_start' not in settings:
