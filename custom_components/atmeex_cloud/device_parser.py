@@ -43,7 +43,7 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Исправляем settings - обязательное поле для DeviceModel
     if 'settings' not in fixed_data or not fixed_data['settings']:
-        # Создаем минимальный settings объект
+        # Создаем минимальный settings объект со всеми обязательными полями
         fixed_data['settings'] = {
             'id': 0,
             'device_id': fixed_data.get('id', 0),
@@ -52,12 +52,15 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
             'u_damp_pos': 2,
             'u_temp_room': 0,
             'u_cool_mode': False,
+            'u_hum_stg': 0,  # Обязательное поле, устанавливаем 0 если None
         }
-        _LOGGER.debug("Created default settings object")
+        _LOGGER.debug("Created default settings object with all required fields")
     else:
         settings = fixed_data['settings'].copy()
         
         # Убеждаемся, что обязательные поля settings присутствуют
+        # ВАЖНО: u_hum_stg требуется библиотекой, но может быть None в API
+        # Пробуем установить 0 если None, так как библиотека может не принимать None
         required_settings_fields = {
             'id': 0,
             'device_id': fixed_data.get('id', 0),
@@ -66,6 +69,7 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
             'u_damp_pos': 2,
             'u_temp_room': 0,
             'u_cool_mode': False,
+            'u_hum_stg': 0,  # Устанавливаем 0 вместо None, так как библиотека требует значение
         }
         
         for field, default_value in required_settings_fields.items():
@@ -73,26 +77,29 @@ def fix_device_data_for_parsing(device_data: Dict[str, Any]) -> Dict[str, Any]:
                 settings[field] = default_value
                 _LOGGER.debug(f"Added missing settings field {field} with default value: {default_value}")
         
-        # Исправляем u_hum_stg - должно быть int, но может быть None
-        # Удаляем поле если None, чтобы библиотека использовала значение по умолчанию
-        if 'u_hum_stg' in settings and settings['u_hum_stg'] is None:
-            del settings['u_hum_stg']
-        
-        # u_auto и u_night могут быть None (Optional), удаляем их если None
-        if 'u_auto' in settings and settings['u_auto'] is None:
-            del settings['u_auto']
-        if 'u_night' in settings and settings['u_night'] is None:
-            del settings['u_night']
-        
         # Убеждаемся, что числовые поля имеют правильные типы
-        if 'u_fan_speed' in settings and settings['u_fan_speed'] is None:
+        if 'u_fan_speed' not in settings or settings['u_fan_speed'] is None:
             settings['u_fan_speed'] = 0
-        if 'u_damp_pos' in settings and settings['u_damp_pos'] is None:
+        if 'u_damp_pos' not in settings or settings['u_damp_pos'] is None:
             settings['u_damp_pos'] = 2
-        if 'u_temp_room' in settings and settings['u_temp_room'] is None:
+        if 'u_temp_room' not in settings or settings['u_temp_room'] is None:
             settings['u_temp_room'] = 0
-        if 'u_cool_mode' in settings and settings['u_cool_mode'] is None:
+        if 'u_cool_mode' not in settings or settings['u_cool_mode'] is None:
             settings['u_cool_mode'] = False
+        
+        # u_auto и u_night могут быть None (Optional), но поле должно присутствовать
+        if 'u_auto' not in settings:
+            settings['u_auto'] = None
+        if 'u_night' not in settings:
+            settings['u_night'] = None
+        
+        # Дополнительные поля settings, которые могут отсутствовать
+        if 'u_night_start' not in settings:
+            settings['u_night_start'] = None
+        if 'u_night_stop' not in settings:
+            settings['u_night_stop'] = None
+        if 'u_time_zone' not in settings:
+            settings['u_time_zone'] = None
         
         fixed_data['settings'] = settings
     
