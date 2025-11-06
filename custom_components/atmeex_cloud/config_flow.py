@@ -45,9 +45,12 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             _LOGGER.info(f"Attempting to authenticate with email: {email}")
             
-            # Создаем клиент
-            # Аутентификация может происходить лениво при первом API запросе
-            atmeex = AtmeexClient(email, user_input.get(CONF_PASSWORD))
+            # Создаем клиент в отдельном потоке, чтобы избежать блокирующих вызовов в event loop
+            # Это исправляет предупреждение о blocking call to load_verify_locations
+            def _create_client():
+                return AtmeexClient(email, user_input.get(CONF_PASSWORD))
+            
+            atmeex = await self.hass.async_add_executor_job(_create_client)
             
             _LOGGER.info(f"Fetching devices for account {email}...")
             
