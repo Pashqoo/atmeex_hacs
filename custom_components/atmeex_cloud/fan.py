@@ -66,7 +66,7 @@ class AtmeexFanEntity(CoordinatorEntity, FanEntity):
         
         # Включаем устройство если выключено
         if not self.device.model.settings.u_pwr_on:
-            await self.device.set_power(True)
+            await self.device.set_power_only(True)
         
         # Если указана скорость, устанавливаем её
         if percentage is not None:
@@ -87,7 +87,7 @@ class AtmeexFanEntity(CoordinatorEntity, FanEntity):
     async def async_turn_off(self, **kwargs) -> None:
         """Turn off the fan."""
         _LOGGER.debug(f"Turning off fan {self.name}")
-        await self.device.set_power(False)
+        await self.device.set_power_only(False)
         await self.coordinator.async_request_refresh()
     
     async def async_set_percentage(self, percentage: int) -> None:
@@ -102,7 +102,7 @@ class AtmeexFanEntity(CoordinatorEntity, FanEntity):
         
         # Если устройство выключено, включаем его
         if not self.device.model.settings.u_pwr_on:
-            await self.device.set_power(True)
+            await self.device.set_power_only(True)
         
         await self.coordinator.async_request_refresh()
     

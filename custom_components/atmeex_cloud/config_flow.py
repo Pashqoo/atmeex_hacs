@@ -1,10 +1,13 @@
 import logging
 
 import voluptuous as vol
+import httpx
 from atmeexpy.client import AtmeexClient
+from atmeexpy.exceptions import AtmeexAuthError
 
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_PASSWORD, CONF_EMAIL
+from homeassistant.helpers.httpx_client import create_async_httpx_client
 from .const import DOMAIN, CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,12 +48,9 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             _LOGGER.info(f"Attempting to authenticate with email: {email}")
             
-            # Создаем клиент в отдельном потоке, чтобы избежать блокирующих вызовов в event loop
-            # Это исправляет предупреждение о blocking call to load_verify_locations
-            def _create_client():
-                return AtmeexClient(email, user_input.get(CONF_PASSWORD))
-            
-            atmeex = await self.hass.async_add_executor_job(_create_client)
+            # atmeexpy 0.4.0: клиент принимает httpx-клиент, аутентификация отдельным вызовом
+            atmeex = AtmeexClient(create_async_httpx_client(self.hass))
+            await atmeex.signin_with_email(email, user_input.get(CONF_PASSWORD))
             
             _LOGGER.info(f"Fetching devices for account {email}...")
             
@@ -69,7 +69,7 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                 device_count = 0
             
             # Проверяем, что аутентификация прошла успешно после получения устройств
-            if not hasattr(atmeex.auth, '_access_token') or not atmeex.auth._access_token:
+            if not atmeex.access_token:
                 _LOGGER.error(f"Authentication failed for {email}: no access token received after API call")
                 errors["base"] = "authentication_failed"
                 return self.async_show_form(
@@ -196,8 +196,8 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                     f"Allowing integration setup despite no devices found. "
                     f"Devices should appear after first coordinator update."
                 )
-                user_input[CONF_ACCESS_TOKEN] = atmeex.auth._access_token
-                user_input[CONF_REFRESH_TOKEN] = atmeex.auth._refresh_token
+                user_input[CONF_ACCESS_TOKEN] = atmeex.access_token
+                user_input[CONF_REFRESH_TOKEN] = atmeex.refresh_token
                 return self.async_create_entry(
                     title=email,
                     data=user_input,
@@ -235,8 +235,8 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
                 
                 # Сохраняем токены и создаем конфигурацию
-                user_input[CONF_ACCESS_TOKEN] = atmeex.auth._access_token
-                user_input[CONF_REFRESH_TOKEN] = atmeex.auth._refresh_token
+                user_input[CONF_ACCESS_TOKEN] = atmeex.access_token
+                user_input[CONF_REFRESH_TOKEN] = atmeex.refresh_token
                 final_device_count = device_count if device_count > 0 else raw_api_device_count
                 _LOGGER.info(f"Successfully configured integration for {email} with {final_device_count} device(s)")
                 return self.async_create_entry(
@@ -244,6 +244,9 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                     data=user_input,
                 )
                 
+        except (AtmeexAuthError, httpx.HTTPStatusError) as exc:
+            _LOGGER.error(f"Authentication failed for {email}: {exc}")
+            errors["base"] = "invalid_auth"
         except ConnectionError as exc:
             _LOGGER.error(f"Connection error for {email}: {exc}")
             errors["base"] = "connection_error"

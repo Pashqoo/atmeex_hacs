@@ -4,7 +4,7 @@ import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+from homeassistant.helpers.httpx_client import create_async_httpx_client
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
@@ -21,11 +21,8 @@ async def async_setup(hass: HomeAssistant, config: dict):
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    # Создаем AtmeexClient в отдельном потоке, чтобы избежать блокирующих вызовов в event loop
-    def _create_client():
-        return AtmeexClient(entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
-    
-    api = await hass.async_add_executor_job(_create_client)
+    # atmeexpy 0.4.0: клиент принимает httpx-клиент, сессия восстанавливается из токенов
+    api = AtmeexClient(create_async_httpx_client(hass))
     api.restore_tokens(entry.data[CONF_ACCESS_TOKEN], entry.data[CONF_REFRESH_TOKEN])
 
     coordinator = AtmeexDataCoordinator(hass, api, entry)
@@ -131,18 +128,18 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                 try:
                     # Пробуем получить condition через API напрямую
                     # Возможно, нужно сделать отдельный запрос GET /devices/{id} или GET /devices/{id}/condition
-                    if hasattr(self.api, '_http_client'):
+                    if hasattr(self.api, 'http_client'):
                         _LOGGER.debug(f"Trying to fetch condition for device {device_id} via direct API call")
                         try:
                             # Пробуем получить данные устройства через GET /devices/{id}
-                            resp = await self.api._http_client.get(f"/devices/{device_id}")
+                            resp = await self.api.http_client.get(f"/devices/{device_id}")
                             if resp.status_code == 200:
                                 device_data = resp.json()
                                 _LOGGER.debug(f"Device {device_id} API response: {device_data}")
                                 
                                 # Проверяем, есть ли condition в ответе
                                 if 'condition' in device_data and device_data['condition']:
-                                    from atmeexpy.device import DeviceConditionModel
+                                    from atmeexpy.models import DeviceConditionModel
                                     device.model.condition = DeviceConditionModel.fromdict(device_data['condition'])
                                     _LOGGER.info(f"Successfully fetched condition for device {device_name} (ID: {device_id})")
                                 elif 'condition' in device_data and device_data['condition'] is None:
@@ -240,13 +237,13 @@ class AtmeexDataCoordinator(DataUpdateCoordinator):
                     f"Condition is only available when device is online. Please check device connectivity in Atmeex mobile app."
                 )
 
-        if self.entry.data[CONF_ACCESS_TOKEN] != self.api.auth._access_token or \
-            self.entry.data[CONF_REFRESH_TOKEN] != self.api.auth._refresh_token:
+        if self.entry.data[CONF_ACCESS_TOKEN] != self.api.access_token or \
+            self.entry.data[CONF_REFRESH_TOKEN] != self.api.refresh_token:
 
             # Исправлено: используем copy() чтобы избежать изменения неизменяемого словаря
             data = self.entry.data.copy()
-            data[CONF_ACCESS_TOKEN] = self.api.auth._access_token
-            data[CONF_REFRESH_TOKEN] = self.api.auth._refresh_token
+            data[CONF_ACCESS_TOKEN] = self.api.access_token
+            data[CONF_REFRESH_TOKEN] = self.api.refresh_token
 
             # Исправлено: async_update_entry должен быть async функцией
             # Но в некоторых случаях может возвращать bool (баг или старая версия HA)

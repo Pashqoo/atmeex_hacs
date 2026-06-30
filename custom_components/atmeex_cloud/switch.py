@@ -43,7 +43,7 @@ class BaseAtmeexSwitch(CoordinatorEntity, SwitchEntity):
         # Используем HTTP клиент из API клиента, который уже настроен правильно
         try:
             # Получаем HTTP клиент из API клиента
-            http_client = self.coordinator.api._http_client
+            http_client = self.coordinator.api.http_client
             base_url = getattr(self.coordinator.api, '_base_url', 'https://api.atmeex.ru')
             
             # Используем относительный путь, клиент сам добавит base_url
